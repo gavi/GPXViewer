@@ -65,13 +65,23 @@ struct GPXTrack {
             endDate = startDate.addingTimeInterval(3600)
         }
         
+        // Calculate total distance by summing distances between consecutive points
+        var totalDistanceMeters: Double = 0
+        if allLocations.count > 1 {
+            for i in 0..<(allLocations.count - 1) {
+                totalDistanceMeters += allLocations[i].distance(from: allLocations[i+1])
+            }
+        }
+        
+        let totalDistanceQuantity = HKQuantity(unit: .meter(), doubleValue: totalDistanceMeters)
+        
         return HKWorkout(
             activityType: workoutType,
             start: startDate,
             end: endDate,
             duration: endDate.timeIntervalSince(startDate),
             totalEnergyBurned: nil,
-            totalDistance: nil,
+            totalDistance: totalDistanceQuantity,
             metadata: [
                 "name": name,
                 "source": "GPX Sample"

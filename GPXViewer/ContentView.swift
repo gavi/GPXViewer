@@ -14,11 +14,18 @@ struct ContentView: View {
     @StateObject private var settings = SettingsModel()
 
     var body: some View {
-        VStack {
+        ZStack {
             if !document.trackSegments.isEmpty {
+                // Map view as the base layer
                 MapView(trackSegments: document.trackSegments)
                     .environmentObject(settings)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                
+                // Overlay with route information
+                if let track = document.track {
+                    RouteInfoOverlay(trackSegments: document.trackSegments, workout: track.workout)
+                        .environmentObject(settings)
+                }
             } else {
                 VStack {
                     Text("No valid GPX data found")
