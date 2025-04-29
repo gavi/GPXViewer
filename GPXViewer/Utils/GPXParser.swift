@@ -3,8 +3,27 @@ import CoreLocation
 import HealthKit
 
 // Represents a track segment with location points
-struct GPXTrackSegment {
+struct GPXTrackSegment: Equatable {
     let locations: [CLLocation]
+    
+    static func == (lhs: GPXTrackSegment, rhs: GPXTrackSegment) -> Bool {
+        guard lhs.locations.count == rhs.locations.count else { return false }
+        
+        for i in 0..<lhs.locations.count {
+            let loc1 = lhs.locations[i]
+            let loc2 = rhs.locations[i]
+            
+            // Compare essential properties
+            if loc1.coordinate.latitude != loc2.coordinate.latitude ||
+               loc1.coordinate.longitude != loc2.coordinate.longitude ||
+               loc1.altitude != loc2.altitude ||
+               loc1.timestamp != loc2.timestamp {
+                return false
+            }
+        }
+        
+        return true
+    }
 }
 
 struct GPXTrack {

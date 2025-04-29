@@ -8,7 +8,6 @@ typealias PlatformColor = UIColor
 typealias PlatformImage = UIImage
 #elseif os(macOS)
 import AppKit
-typealias PlatformColor = NSColor
 typealias PlatformImage = NSImage
 #endif
 
@@ -536,6 +535,44 @@ struct MapView: UIViewRepresentable {
         #else
         mapView.mapType = settings.mapStyle.mapType
         #endif
+        
+        // Always update when this method is called to ensure visibility changes are reflected
+        // This handles both segment count changes and visibility toggling
+        
+        // Get existing overlays before clearing
+        let existingOverlaysCount = mapView.overlays.count
+        
+        // Clear existing overlays
+        context.coordinator.clearOverlays(from: mapView)
+        
+        // Skip if no segments to show
+        if trackSegments.isEmpty {
+            context.coordinator.elevationPolylines = []
+            return
+        }
+        
+        // Add each segment's polyline
+        var newElevationPolylines: [ElevationPolyline] = []
+        for segment in trackSegments {
+            let elevationPolyline = createElevationPolyline(from: segment.locations)
+            elevationPolyline.calculateGradeData(from: segment.locations)
+            mapView.addOverlay(elevationPolyline)
+            newElevationPolylines.append(elevationPolyline)
+        }
+        
+        // Update the coordinator's polylines
+        context.coordinator.elevationPolylines = newElevationPolylines
+        
+        // Only adjust the map view region if this is our first time showing segments
+        // or if we went from 0 to some segments (to avoid jumpy map behavior)
+        if (existingOverlaysCount == 0 && !newElevationPolylines.isEmpty) {
+            // Collect all locations
+            let allLocations = trackSegments.flatMap { $0.locations }
+            if !allLocations.isEmpty {
+                // Set the map region to fit all visible segments
+                setRegion(for: mapView, from: allLocations)
+            }
+        }
     }
     
     func makeCoordinator() -> Coordinator {
@@ -667,6 +704,44 @@ struct MapView: NSViewRepresentable {
         #else
         mapView.mapType = settings.mapStyle.mapType
         #endif
+        
+        // Always update when this method is called to ensure visibility changes are reflected
+        // This handles both segment count changes and visibility toggling
+        
+        // Get existing overlays before clearing
+        let existingOverlaysCount = mapView.overlays.count
+        
+        // Clear existing overlays
+        context.coordinator.clearOverlays(from: mapView)
+        
+        // Skip if no segments to show
+        if trackSegments.isEmpty {
+            context.coordinator.elevationPolylines = []
+            return
+        }
+        
+        // Add each segment's polyline
+        var newElevationPolylines: [ElevationPolyline] = []
+        for segment in trackSegments {
+            let elevationPolyline = createElevationPolyline(from: segment.locations)
+            elevationPolyline.calculateGradeData(from: segment.locations)
+            mapView.addOverlay(elevationPolyline)
+            newElevationPolylines.append(elevationPolyline)
+        }
+        
+        // Update the coordinator's polylines
+        context.coordinator.elevationPolylines = newElevationPolylines
+        
+        // Only adjust the map view region if this is our first time showing segments
+        // or if we went from 0 to some segments (to avoid jumpy map behavior)
+        if (existingOverlaysCount == 0 && !newElevationPolylines.isEmpty) {
+            // Collect all locations
+            let allLocations = trackSegments.flatMap { $0.locations }
+            if !allLocations.isEmpty {
+                // Set the map region to fit all visible segments
+                setRegion(for: mapView, from: allLocations)
+            }
+        }
     }
     
     func makeCoordinator() -> Coordinator {
@@ -781,6 +856,16 @@ extension MapView {
             maxLon = max(maxLon, location.coordinate.longitude)
         }
         
+        // Ensure we have some minimal span (in case all points are at exactly the same location)
+        let latSpan = maxLat - minLat
+        let lonSpan = maxLon - minLon
+        
+        // If the span is too small, expand it to ensure visibility
+        let minSpan = 0.01 // About 1km
+        
+        let adjustedLatSpan = max(latSpan, minSpan) * 1.5 // Add 50% padding
+        let adjustedLonSpan = max(lonSpan, minSpan) * 1.5 // Add 50% padding
+        
         // Create region with padding
         let center = CLLocationCoordinate2D(
             latitude: (minLat + maxLat) / 2,
@@ -788,20 +873,19 @@ extension MapView {
         )
         
         let span = MKCoordinateSpan(
-            latitudeDelta: (maxLat - minLat) * 1.5,
-            longitudeDelta: (maxLon - minLon) * 1.5
+            latitudeDelta: adjustedLatSpan,
+            longitudeDelta: adjustedLonSpan
         )
         
-        // Ensure minimum zoom level
-        let region = MKCoordinateRegion(
-            center: center,
-            span: MKCoordinateSpan(
-                latitudeDelta: max(span.latitudeDelta, 0.01),
-                longitudeDelta: max(span.longitudeDelta, 0.01)
-            )
-        )
+        // Create the region and set it
+        let region = MKCoordinateRegion(center: center, span: span)
+        let adjustedRegion = mapView.regionThatFits(region) // Let MapKit adjust for map boundaries
         
-        mapView.setRegion(region, animated: false)
+        // Apply the region to the map
+        mapView.setRegion(adjustedRegion, animated: false)
+        
+        // Debug
+        print("Set map region: center=(\(center.latitude), \(center.longitude)), span=(\(span.latitudeDelta), \(span.longitudeDelta))")
     }
 }
 #endif
@@ -822,6 +906,11 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 elevationPolylines = []
             }
         }
+    }
+    
+    // Clear all overlays from the map
+    func clearOverlays(from mapView: MKMapView) {
+        mapView.removeOverlays(mapView.overlays)
     }
     
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
