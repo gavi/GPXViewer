@@ -8,6 +8,7 @@ typealias PlatformColor = UIColor
 typealias PlatformImage = UIImage
 #elseif os(macOS)
 import AppKit
+typealias PlatformColor = NSColor
 typealias PlatformImage = NSImage
 #endif
 
@@ -417,7 +418,7 @@ struct MapView: UIViewRepresentable {
     
     // Convenience init to maintain backward compatibility
     init(routeLocations: [CLLocation]) {
-        self.trackSegments = [GPXTrackSegment(locations: routeLocations)]
+        self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
     }
     
     // New initializer for multiple segments
@@ -586,7 +587,7 @@ struct MapView: NSViewRepresentable {
     
     // Convenience init to maintain backward compatibility
     init(routeLocations: [CLLocation]) {
-        self.trackSegments = [GPXTrackSegment(locations: routeLocations)]
+        self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
     }
     
     // New initializer for multiple segments

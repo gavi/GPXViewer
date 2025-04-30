@@ -18,8 +18,20 @@ extension UTType {
 
 struct GPXViewerDocument: FileDocument {
     var text: String
-    var track: GPXTrack?
-    var trackSegments: [GPXTrackSegment] = []
+    var gpxFile: GPXFile?
+    
+    // For backward compatibility and UI convenience
+    var track: GPXTrack? {
+        return gpxFile?.primaryTrack
+    }
+    
+    var tracks: [GPXTrack] {
+        return gpxFile?.tracks ?? []
+    }
+    
+    var trackSegments: [GPXTrackSegment] {
+        return gpxFile?.allSegments ?? []
+    }
     
     init(text: String = "") {
         self.text = text
@@ -38,10 +50,8 @@ struct GPXViewerDocument: FileDocument {
         text = string
         
         // Parse GPX data
-        if let parsedTrack = GPXParser.parseGPXData(data) {
-            track = parsedTrack
-            trackSegments = parsedTrack.segments
-        }
+        let filename = configuration.file.filename ?? "Unknown"
+        self.gpxFile = GPXParser.parseGPXData(data, filename: filename)
     }
     
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
