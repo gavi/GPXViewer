@@ -7,16 +7,27 @@ struct RouteInfoOverlay: View {
     let workout: HKWorkout
     @EnvironmentObject var settings: SettingsModel
     
+    // Get track name from workout metadata
+    private var trackName: String {
+        return workout.metadata?["name"] as? String ?? "Unnamed Track"
+    }
+    
     var body: some View {
         VStack {
             // Floating workout info section with transparency
             VStack(alignment: .leading, spacing: 8) {
+                // Track name as headline
+                Text(trackName)
+                    .font(.headline)
+                    .lineLimit(1)
+                
                 // Calculate total points across all segments
                 let totalPoints = trackSegments.reduce(0) { $0 + $1.locations.count }
                 let segmentCount = trackSegments.count
                 
-                Text("Route with \(totalPoints) data points in \(segmentCount) segment\(segmentCount == 1 ? "" : "s")")
-                    .font(.headline)
+                Text("\(totalPoints) data points in \(segmentCount) segment\(segmentCount == 1 ? "" : "s")")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
                 
                 HStack {
                     VStack(alignment: .leading) {
