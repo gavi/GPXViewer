@@ -12,7 +12,7 @@ import CoreLocation
 struct ContentView: View {
     @Binding var document: GPXViewerDocument
     @StateObject private var settings = SettingsModel()
-    @State private var isSegmentDrawerOpen = false
+    @State private var isTracksDrawerOpen = false
     @State private var visibleSegments: [Bool] = []
     @State private var selectedTrackIndex: Int = 0
     @State private var segments: [GPXTrackSegment] = []
@@ -54,9 +54,9 @@ struct ContentView: View {
                         updateFromDocument()
                     }
                 
-                // Main content as a horizontal split view with animation
+                // Main content with optional drawer
                 HStack(spacing: 0) {
-                    // Map content on the left
+                    // Main map content
                     ZStack {
                         // Map view as the base layer
                         MapView(trackSegments: visibleTrackSegments)
@@ -71,49 +71,18 @@ struct ContentView: View {
                     }
                     
                     // Tracks drawer on the right (only shown when open)
-                    if isSegmentDrawerOpen {
+                    if isTracksDrawerOpen {
                         TracksDrawer(
-                            isOpen: $isSegmentDrawerOpen,
+                            isOpen: $isTracksDrawerOpen,
                             document: $document,
                             visibleSegments: $visibleSegments,
                             selectedTrackIndex: $selectedTrackIndex,
                             segments: $segments
                         )
                         .environmentObject(settings)
-                    }
-                    
-                    // Toggle button (visible only when drawer is closed)
-                    if !isSegmentDrawerOpen {
-                        VStack {
-                            Spacer()
-                            
-                            Button(action: {
-                                withAnimation {
-                                    isSegmentDrawerOpen = true
-                                }
-                            }) {
-                                VStack(alignment: .center, spacing: 5) {
-                                    Image(systemName: "chevron.left")
-                                        .font(.system(size: 14))
-                                    Text("Tracks")
-                                        .font(.caption)
-                                        .rotated(.degrees(-90))
-                                        .fixedSize()
-                                }
-                                .foregroundColor(.primary)
-                                .padding(.vertical, 24)
-                                .padding(.horizontal, 6)
-                                .background(Color.white.opacity(0.9))
-                                .cornerRadius(8)
-                                .shadow(radius: 2)
-                            }
-                            .padding()
-                            
-                            Spacer()
-                        }
+                        .transition(.move(edge: .trailing))
                     }
                 }
-                .animation(.easeInOut(duration: 0.3), value: isSegmentDrawerOpen)
             } else {
                 VStack {
                     Text("No valid GPX data found")
@@ -126,6 +95,7 @@ struct ContentView: View {
             }
         }
         .toolbar {
+            // Map style picker
             ToolbarItem(placement: .automatic) {
                 Picker("Map Style", selection: $settings.mapStyle) {
                     ForEach(MapStyle.allCases) { style in
@@ -133,6 +103,11 @@ struct ContentView: View {
                     }
                 }
                 .pickerStyle(.menu)
+            }
+            
+            // Tracks drawer toggle
+            ToolbarItem(placement: .automatic) {
+                TracksDrawer.toolbarButton(isOpen: $isTracksDrawerOpen)
             }
         }
     }
