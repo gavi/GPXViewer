@@ -10,7 +10,7 @@ import SwiftUI
 @main
 struct GPXViewerApp: App {
     var body: some Scene {
-        DocumentGroup(newDocument: GPXViewerDocument()) { file in
+        DocumentGroup(viewing: GPXViewerDocument.self) { file in
             ContentView(document: file.$document)
         }
     }

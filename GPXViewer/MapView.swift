@@ -431,6 +431,9 @@ struct MapView: UIViewRepresentable {
         mapView.delegate = context.coordinator
         mapView.showsUserLocation = false
         
+        // Store if this is initial load to perform delayed zoom in
+        context.coordinator.isInitialLoad = true
+        
         #if swift(>=5.7) && !targetEnvironment(macCatalyst)
         if #available(iOS 16.0, *) {
             mapView.preferredConfiguration = settings.mapStyle.mapConfiguration
@@ -520,6 +523,9 @@ struct MapView: UIViewRepresentable {
                 
                 mapView.addAnnotations([startPoint, endPoint])
             }
+            
+            // Store the locations for delayed zoom (this will be applied in updateUIView)
+            context.coordinator.initialLoadLocations = allLocations
         }
         
         return mapView
@@ -543,8 +549,9 @@ struct MapView: UIViewRepresentable {
         // Get existing overlays before clearing
         let existingOverlaysCount = mapView.overlays.count
         
-        // Clear existing overlays
+        // Clear existing overlays and annotations
         context.coordinator.clearOverlays(from: mapView)
+        mapView.removeAnnotations(mapView.annotations)
         
         // Skip if no segments to show
         if trackSegments.isEmpty {
@@ -564,14 +571,54 @@ struct MapView: UIViewRepresentable {
         // Update the coordinator's polylines
         context.coordinator.elevationPolylines = newElevationPolylines
         
-        // Only adjust the map view region if this is our first time showing segments
-        // or if we went from 0 to some segments (to avoid jumpy map behavior)
-        if (existingOverlaysCount == 0 && !newElevationPolylines.isEmpty) {
+        // Collect all locations
+        let allLocations = trackSegments.flatMap { $0.locations }
+        if !allLocations.isEmpty {
+            // Add elevation markers
+            addElevationMarkers(to: mapView, routeLocations: allLocations)
+            
+            // Add start and end annotations
+            if let firstSegment = trackSegments.first, 
+               let lastSegment = trackSegments.last,
+               let firstLocation = firstSegment.locations.first,
+               let lastLocation = lastSegment.locations.last {
+                
+                let startPoint = MKPointAnnotation()
+                startPoint.coordinate = firstLocation.coordinate
+                startPoint.title = "Start"
+                
+                let endPoint = MKPointAnnotation()
+                endPoint.coordinate = lastLocation.coordinate
+                endPoint.title = "End"
+                
+                mapView.addAnnotations([startPoint, endPoint])
+            }
+        }
+        
+        // Handling initial load delayed zoom
+        if context.coordinator.isInitialLoad {
             // Collect all locations
-            let allLocations = trackSegments.flatMap { $0.locations }
             if !allLocations.isEmpty {
-                // Set the map region to fit all visible segments
-                setRegion(for: mapView, from: allLocations)
+                print("Setting up delayed zoom for initial load")
+                context.coordinator.performDelayedZoom(mapView: mapView, locations: allLocations)
+            }
+        } 
+        // Regular region setting (for cases other than initial load)
+        else {
+            // Adjust the map view region in these cases:
+            // 1. First time showing segments (existingOverlaysCount == 0)
+            // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
+            // 3. Always set region on iOS to ensure consistent behavior
+            let shouldSetRegion = !newElevationPolylines.isEmpty && 
+                                 (existingOverlaysCount == 0 || 
+                                  existingOverlaysCount != newElevationPolylines.count)
+            
+            if shouldSetRegion {
+                // Collect all locations
+                if !allLocations.isEmpty {
+                    // Set the map region to fit all visible segments
+                    setRegion(for: mapView, from: allLocations)
+                }
             }
         }
     }
@@ -712,8 +759,9 @@ struct MapView: NSViewRepresentable {
         // Get existing overlays before clearing
         let existingOverlaysCount = mapView.overlays.count
         
-        // Clear existing overlays
+        // Clear existing overlays and annotations
         context.coordinator.clearOverlays(from: mapView)
+        mapView.removeAnnotations(mapView.annotations)
         
         // Skip if no segments to show
         if trackSegments.isEmpty {
@@ -733,11 +781,39 @@ struct MapView: NSViewRepresentable {
         // Update the coordinator's polylines
         context.coordinator.elevationPolylines = newElevationPolylines
         
-        // Only adjust the map view region if this is our first time showing segments
-        // or if we went from 0 to some segments (to avoid jumpy map behavior)
-        if (existingOverlaysCount == 0 && !newElevationPolylines.isEmpty) {
+        // Collect all locations
+        let allLocations = trackSegments.flatMap { $0.locations }
+        if !allLocations.isEmpty {
+            // Add elevation markers
+            addElevationMarkers(to: mapView, routeLocations: allLocations)
+            
+            // Add start and end annotations
+            if let firstSegment = trackSegments.first, 
+               let lastSegment = trackSegments.last,
+               let firstLocation = firstSegment.locations.first,
+               let lastLocation = lastSegment.locations.last {
+                
+                let startPoint = MKPointAnnotation()
+                startPoint.coordinate = firstLocation.coordinate
+                startPoint.title = "Start"
+                
+                let endPoint = MKPointAnnotation()
+                endPoint.coordinate = lastLocation.coordinate
+                endPoint.title = "End"
+                
+                mapView.addAnnotations([startPoint, endPoint])
+            }
+        }
+        
+        // Adjust the map view region in these cases:
+        // 1. First time showing segments (existingOverlaysCount == 0)
+        // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
+        let shouldSetRegion = !newElevationPolylines.isEmpty && 
+                             (existingOverlaysCount == 0 || 
+                              existingOverlaysCount != newElevationPolylines.count)
+        
+        if shouldSetRegion {
             // Collect all locations
-            let allLocations = trackSegments.flatMap { $0.locations }
             if !allLocations.isEmpty {
                 // Set the map region to fit all visible segments
                 setRegion(for: mapView, from: allLocations)
@@ -857,36 +933,67 @@ extension MapView {
             maxLon = max(maxLon, location.coordinate.longitude)
         }
         
-        // Ensure we have some minimal span (in case all points are at exactly the same location)
-        let latSpan = maxLat - minLat
-        let lonSpan = maxLon - minLon
-        
-        // If the span is too small, expand it to ensure visibility
-        let minSpan = 0.01 // About 1km
-        
-        let adjustedLatSpan = max(latSpan, minSpan) * 1.5 // Add 50% padding
-        let adjustedLonSpan = max(lonSpan, minSpan) * 1.5 // Add 50% padding
-        
-        // Create region with padding
+        // Calculate center point
         let center = CLLocationCoordinate2D(
             latitude: (minLat + maxLat) / 2,
             longitude: (minLon + maxLon) / 2
         )
         
-        let span = MKCoordinateSpan(
-            latitudeDelta: adjustedLatSpan,
-            longitudeDelta: adjustedLonSpan
+        // Create points from our bounds
+        let topLeft = CLLocationCoordinate2D(latitude: maxLat, longitude: minLon)
+        let bottomRight = CLLocationCoordinate2D(latitude: minLat, longitude: maxLon)
+        
+        // Convert to map points
+        let mapPointCenter = MKMapPoint(center)
+        let mapPointTopLeft = MKMapPoint(topLeft)
+        let mapPointBottomRight = MKMapPoint(bottomRight)
+        
+        // Calculate width and height in map points
+        let mapWidth = abs(mapPointTopLeft.x - mapPointBottomRight.x)
+        let mapHeight = abs(mapPointTopLeft.y - mapPointBottomRight.y)
+        
+        // Add tighter padding (reduced from 1% to 0.5%) to avoid excessive zoom out
+        let paddingFactor = 0.005 // 0.5% padding
+        let mapRect = MKMapRect(
+            x: min(mapPointTopLeft.x, mapPointBottomRight.x) - mapWidth * paddingFactor,
+            y: min(mapPointTopLeft.y, mapPointBottomRight.y) - mapHeight * paddingFactor,
+            width: mapWidth * (1 + 2 * paddingFactor),
+            height: mapHeight * (1 + 2 * paddingFactor)
         )
         
-        // Create the region and set it
-        let region = MKCoordinateRegion(center: center, span: span)
-        let adjustedRegion = mapView.regionThatFits(region) // Let MapKit adjust for map boundaries
+        // Ensure the rect has a minimum size (prevent extreme zoom in)
+        let minSize: Double = 100.0
+        var adjustedRect = mapRect
+        if mapRect.size.width < minSize || mapRect.size.height < minSize {
+            let center = MKMapPoint(
+                x: mapRect.midX,
+                y: mapRect.midY
+            )
+            adjustedRect = MKMapRect(
+                x: center.x - minSize/2,
+                y: center.y - minSize/2,
+                width: minSize,
+                height: minSize
+            )
+        }
         
-        // Apply the region to the map
-        mapView.setRegion(adjustedRegion, animated: false)
+        // Set map view to show this rect
+        // Use a slightly tighter zoom level by applying a scale factor
+        let region = MKCoordinateRegion(adjustedRect)
+        let zoomFactor = 0.9 // Zoom in slightly (1.0 = original region, <1.0 = zoom in)
+        let zoomedRegion = MKCoordinateRegion(
+            center: region.center,
+            span: MKCoordinateSpan(
+                latitudeDelta: region.span.latitudeDelta * zoomFactor,
+                longitudeDelta: region.span.longitudeDelta * zoomFactor
+            )
+        )
         
-        // Debug
-        print("Set map region: center=(\(center.latitude), \(center.longitude)), span=(\(span.latitudeDelta), \(span.longitudeDelta))")
+        mapView.setRegion(zoomedRegion, animated: false)
+        
+        print("Set map region: center=(\(center.latitude), \(center.longitude)), " +
+              "rect=(\(mapRect.origin.x), \(mapRect.origin.y), \(mapRect.size.width), \(mapRect.size.height)), " +
+              "zoom factor: \(zoomFactor)")
     }
 }
 #endif
@@ -894,6 +1001,9 @@ extension MapView {
 // Shared Coordinator class that can be used with both UIViewRepresentable and NSViewRepresentable
 class Coordinator: NSObject, MKMapViewDelegate {
     var elevationPolylines: [ElevationPolyline] = []
+    var isInitialLoad: Bool = false
+    var initialLoadLocations: [CLLocation]? = nil
+    var delayedZoomTimer: Timer? = nil
     
     // Keep the single polyline property for backward compatibility
     var elevationPolyline: ElevationPolyline? {
@@ -913,6 +1023,48 @@ class Coordinator: NSObject, MKMapViewDelegate {
     func clearOverlays(from mapView: MKMapView) {
         mapView.removeOverlays(mapView.overlays)
     }
+    
+    // Perform a delayed zoom for initial load (iOS only)
+    #if os(iOS)
+    func performDelayedZoom(mapView: MKMapView, locations: [CLLocation]) {
+        // Cancel any existing timer
+        delayedZoomTimer?.invalidate()
+        
+        // Setup a timer to perform the delayed zoom (500ms delay)
+        delayedZoomTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
+            guard let self = self else { return }
+            
+            print("Performing delayed zoom after initial load")
+            
+            // Create min/max coordinates for locations
+            let minLat = locations.map { $0.coordinate.latitude }.min() ?? 0
+            let maxLat = locations.map { $0.coordinate.latitude }.max() ?? 0
+            let minLon = locations.map { $0.coordinate.longitude }.min() ?? 0
+            let maxLon = locations.map { $0.coordinate.longitude }.max() ?? 0
+            
+            // Create center coordinate
+            let center = CLLocationCoordinate2D(
+                latitude: (minLat + maxLat) / 2,
+                longitude: (minLon + maxLon) / 2
+            )
+            
+            // Create coordinate span with fixed zoom factor
+            let zoomFactor = 0.8 // Tighter zoom (80% of full span)
+            let span = MKCoordinateSpan(
+                latitudeDelta: (maxLat - minLat) * zoomFactor,
+                longitudeDelta: (maxLon - minLon) * zoomFactor
+            )
+            
+            // Create and apply the region with animation
+            let region = MKCoordinateRegion(center: center, span: span)
+            mapView.setRegion(region, animated: true)
+            
+            // Reset initial load flag
+            self.isInitialLoad = false
+            self.initialLoadLocations = nil
+        }
+    }
+    #endif
     
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let polyline = overlay as? ElevationPolyline {
@@ -948,15 +1100,26 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 #if os(iOS)
                 markerView.glyphImage = UIImage(systemName: "flag.fill")
                 #elseif os(macOS)
-                // Use a simple character on macOS
-                markerView.glyphText = "S"
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "flag.fill", accessibilityDescription: "Start")
+                } else {
+                    // Fallback for older macOS versions
+                    markerView.glyphText = "S"
+                }
                 #endif
             } else if annotation.title == "End" {
                 markerView.markerTintColor = .red
                 #if os(iOS)
                 markerView.glyphImage = UIImage(systemName: "flag.checkered")
                 #elseif os(macOS)
-                markerView.glyphText = "E"
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "flag.checkered", accessibilityDescription: "End")
+                } else {
+                    // Fallback for older macOS versions
+                    markerView.glyphText = "E"
+                }
                 #endif
             } else if annotation.title == "Peak" {
                 markerView.markerTintColor = .orange
