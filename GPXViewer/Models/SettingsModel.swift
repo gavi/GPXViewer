@@ -13,7 +13,7 @@ enum MapStyle: String, CaseIterable, Identifiable {
     @available(iOS 16.0, *)
     var mapConfiguration: MKMapConfiguration {
         switch self {
-        case .standard: return MKStandardMapConfiguration()
+        case .standard: return MKStandardMapConfiguration(elevationStyle: .realistic, emphasisStyle: .muted)
         case .satellite: return MKImageryMapConfiguration()
         case .hybrid: return MKHybridMapConfiguration()
         }

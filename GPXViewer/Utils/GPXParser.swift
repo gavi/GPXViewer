@@ -166,12 +166,88 @@ class GPXParser {
     }    
     
     static func parseGPXFile(at url: URL) -> GPXFile {
-        guard let xmlData = try? Data(contentsOf: url) else {
-            print("Failed to read GPX file at \(url)")
-            return GPXFile(filename: url.lastPathComponent, tracks: [])
+        // First, check if we have a bookmark for this file already
+        var resolvedURL = url
+        var securityAccessGranted = false
+        
+        if let bookmarkData = UserDefaults.standard.data(forKey: "LastGPXBookmark_\(url.lastPathComponent)") {
+            do {
+                var isStale = false
+                let storedURL = try URL(resolvingBookmarkData: bookmarkData, options: [], relativeTo: nil, bookmarkDataIsStale: &isStale)
+                
+                if !isStale && storedURL.startAccessingSecurityScopedResource() {
+                    print("Successfully accessed file via existing bookmark for parsing: \(storedURL)")
+                    resolvedURL = storedURL
+                    securityAccessGranted = true
+                } else if isStale {
+                    print("Bookmark for \(url.lastPathComponent) is stale, will create a new one")
+                    UserDefaults.standard.removeObject(forKey: "LastGPXBookmark_\(url.lastPathComponent)")
+                }
+            } catch {
+                print("Error resolving bookmark for parsing: \(error)")
+            }
         }
         
-        let filename = url.deletingPathExtension().lastPathComponent
+        // If we don't have a bookmark or it failed, try direct access
+        if !securityAccessGranted {
+            if url.startAccessingSecurityScopedResource() {
+                securityAccessGranted = true
+                resolvedURL = url
+                print("Successfully accessed security-scoped resource for GPX parsing: \(url)")
+                
+                // Create a bookmark for future use
+                do {
+                    let bookmarkData = try url.bookmarkData(options: [], includingResourceValuesForKeys: nil, relativeTo: nil)
+                    UserDefaults.standard.set(bookmarkData, forKey: "LastGPXBookmark_\(url.lastPathComponent)")
+                    print("Created new bookmark for GPX file: \(url.lastPathComponent)")
+                } catch {
+                    print("Failed to create bookmark: \(error)")
+                }
+            }
+        }
+        
+        // Ensure we release access when done
+        defer {
+            if securityAccessGranted {
+                resolvedURL.stopAccessingSecurityScopedResource()
+            }
+        }
+        
+        // Try to read the data with proper error handling
+        var xmlData: Data
+        
+        do {
+            xmlData = try Data(contentsOf: resolvedURL)
+        } catch {
+            print("Failed to read GPX file at \(resolvedURL): \(error.localizedDescription)")
+            
+            // Try with file coordination as a fallback
+            var fileData: Data?
+            var coordError: NSError?
+            
+            let coordinator = NSFileCoordinator()
+            coordinator.coordinate(readingItemAt: resolvedURL, options: [], error: &coordError) { coordURL in
+                do {
+                    fileData = try Data(contentsOf: coordURL)
+                } catch let readError {
+                    print("Coordinated read also failed: \(readError)")
+                }
+            }
+            
+            if let error = coordError {
+                print("Coordination error: \(error)")
+            }
+            
+            guard let data = fileData else {
+                print("Could not read file data even with coordination")
+                return GPXFile(filename: resolvedURL.lastPathComponent, tracks: [])
+            }
+            
+            xmlData = data
+        }
+        
+        // Extract filename and parse data
+        let filename = resolvedURL.deletingPathExtension().lastPathComponent
         let gpxFile = parseGPXData(xmlData, filename: filename)
         
         // Process each track to ensure it has a name
@@ -192,7 +268,11 @@ class GPXParser {
             namedTracks.append(track)
         }
         
-        return GPXFile(filename: filename, tracks: namedTracks)
+        // Log parsing results
+        let resultFile = GPXFile(filename: filename, tracks: namedTracks)
+        print("Parsed GPX file \(filename): Found \(resultFile.tracks.count) tracks with \(resultFile.allSegments.count) segments")
+        
+        return resultFile
     }
     
     static func parseGPXData(_ data: Data, filename: String = "") -> GPXFile {
@@ -202,9 +282,42 @@ class GPXParser {
         
         if parser.parse() {
             // Return all parsed tracks
-            return GPXFile(filename: filename, tracks: delegate.tracks)
+            let result = GPXFile(filename: filename, tracks: delegate.tracks)
+            
+            // Success validation - verify we have meaningful data
+            if result.tracks.isEmpty {
+                print("Warning: GPX file parsed successfully but no tracks found")
+            } else if result.allSegments.isEmpty {
+                print("Warning: GPX file has \(result.tracks.count) tracks but no segments")
+            } else if result.allSegments.allSatisfy({ $0.locations.isEmpty }) {
+                print("Warning: GPX file has \(result.tracks.count) tracks and \(result.allSegments.count) segments, but no location points")
+            }
+            
+            return result
         } else {
-            print("Failed to parse GPX data")
+            // Parse failed - report diagnostic information
+            if let error = parser.parserError {
+                print("Failed to parse GPX data: \(error.localizedDescription)")
+                print("Line: \(parser.lineNumber), Column: \(parser.columnNumber)")
+            } else {
+                print("Failed to parse GPX data with unknown error")
+            }
+            
+            // Try to detect if this is even a GPX file by checking for typical XML tags
+            if let xmlString = String(data: data, encoding: .utf8) {
+                if !xmlString.contains("<gpx") {
+                    print("Warning: File does not appear to be a GPX file (missing <gpx> tag)")
+                } else if !xmlString.contains("<trk") {
+                    print("Warning: GPX file does not contain any tracks (missing <trk> tag)")
+                }
+                
+                // Log file size and beginning of content for diagnostics
+                print("File size: \(data.count) bytes")
+                let previewLength = min(100, xmlString.count)
+                let preview = String(xmlString.prefix(previewLength))
+                print("Content preview: \(preview)...")
+            }
+            
             return GPXFile(filename: filename, tracks: [])
         }
     }

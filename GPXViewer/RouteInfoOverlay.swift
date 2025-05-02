@@ -16,10 +16,10 @@ struct RouteInfoOverlay: View {
         VStack {
             // Floating workout info section with transparency
             VStack(alignment: .leading, spacing: 8) {
-                // Track name as headline
-                Text(trackName)
-                    .font(.headline)
-                    .lineLimit(1)
+//                // Track name as headline
+//                Text(trackName)
+//                    .font(.headline)
+//                    .lineLimit(1)
                 
                 // Calculate total points across all segments
                 let totalPoints = trackSegments.reduce(0) { $0 + $1.locations.count }

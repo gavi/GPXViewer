@@ -45,6 +45,23 @@ struct GPXViewerDocument: FileDocument {
         guard let data = configuration.file.regularFileContents,
               let string = String(data: data, encoding: .utf8)
         else {
+            // Log more details about failure
+            print("Failed to read file contents or decode as UTF-8")
+            print("File type: \(configuration.contentType)")
+            print("File name: \(configuration.file.filename ?? "Unknown")")
+            
+            if let fileData = configuration.file.regularFileContents {
+                print("File size: \(fileData.count) bytes")
+                // Try other encodings if UTF-8 failed
+                for encoding in [String.Encoding.ascii, .utf16, .isoLatin1, .windowsCP1252] {
+                    if let _ = String(data: fileData, encoding: encoding) {
+                        print("File could be decoded using \(encoding) encoding")
+                    }
+                }
+            } else {
+                print("No file data available")
+            }
+            
             throw CocoaError(.fileReadCorruptFile)
         }
         text = string
@@ -52,6 +69,14 @@ struct GPXViewerDocument: FileDocument {
         // Parse GPX data
         let filename = configuration.file.filename ?? "Unknown"
         self.gpxFile = GPXParser.parseGPXData(data, filename: filename)
+        
+        // Log whether parsing was successful
+        if let gpxFile = self.gpxFile {
+            print("Successfully parsed GPX file: \(filename)")
+            print("Found \(gpxFile.tracks.count) tracks with \(gpxFile.allSegments.count) total segments")
+        } else {
+            print("Failed to parse GPX data from \(filename)")
+        }
     }
     
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
