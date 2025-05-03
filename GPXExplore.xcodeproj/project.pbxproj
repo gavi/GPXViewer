@@ -82,7 +82,7 @@
 			name = GPXExplore;
 			packageProductDependencies = (
 			);
-			productName = GPXViewer;
+			productName = GPXExplore;
 			productReference = 56F3502D2DC17A4A0002EC04 /* GPXExplore.app */;
 			productType = "com.apple.product-type.application";
 		};

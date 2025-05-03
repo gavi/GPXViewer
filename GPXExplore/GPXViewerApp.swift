@@ -1,6 +1,6 @@
 //
-//  GPXViewerApp.swift
-//  GPXViewer
+//  GPXExploreApp.swift
+//  GPXExplore
 //
 //  Created by Gavi Narra on 4/29/25.
 //
@@ -15,23 +15,23 @@ import AppKit
 #endif
 
 @main
-struct GPXViewerApp: App {
+struct GPXExploreApp: App {
     #if os(iOS)
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @State private var sharedDocument: GPXViewerDocument?
+    @State private var sharedDocument: GPXExploreDocument?
     @State private var isSharedDocumentPresented = false
     #endif
     
     var body: some Scene {
         #if os(iOS)
-        DocumentGroup(viewing: GPXViewerDocument.self) { file in
+        DocumentGroup(viewing: GPXExploreDocument.self) { file in
             ContentView(document: file.$document)
                 .onAppear {
                     setupNotificationObserver()
                 }
         }
         #else
-        DocumentGroup(viewing: GPXViewerDocument.self) { file in
+        DocumentGroup(viewing: GPXExploreDocument.self) { file in
             ContentView(document: file.$document)
         }
         .commands {
@@ -98,7 +98,7 @@ struct GPXViewerApp: App {
                         }
                         
                         guard let validData = fileData else {
-                            throw NSError(domain: "GPXViewer", code: 2, userInfo: [
+                            throw NSError(domain: "GPXExplore", code: 2, userInfo: [
                                 NSLocalizedDescriptionKey: "Failed to read file data even with coordination"
                             ])
                         }
@@ -108,7 +108,7 @@ struct GPXViewerApp: App {
                     
                     // Try to parse the data
                     if let content = String(data: data, encoding: .utf8) {
-                        var document = GPXViewerDocument(text: content)
+                        var document = GPXExploreDocument(text: content)
                         document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
                         
                         // Check if we actually have track data
@@ -131,7 +131,7 @@ struct GPXViewerApp: App {
                             rootViewController.present(hostingController, animated: true)
                         }
                     } else {
-                        throw NSError(domain: "GPXViewer", code: 3, userInfo: [
+                        throw NSError(domain: "GPXExplore", code: 3, userInfo: [
                             NSLocalizedDescriptionKey: "Could not convert file data to text"
                         ])
                     }
@@ -302,7 +302,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
                 if let readData = fileData {
                     data = readData
                 } else {
-                    throw NSError(domain: "GPXViewer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to read file data even with coordination"])
+                    throw NSError(domain: "GPXExplore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to read file data even with coordination"])
                 }
             }
             
@@ -417,7 +417,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
                 if let readData = fileData {
                     data = readData
                 } else {
-                    throw NSError(domain: "GPXViewer", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to read file data even with coordination"])
+                    throw NSError(domain: "GPXExplore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Unable to read file data even with coordination"])
                 }
             }
             

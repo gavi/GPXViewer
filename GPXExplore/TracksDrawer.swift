@@ -8,7 +8,7 @@ import AppKit
 
 struct TracksDrawer: View {
     @Binding var isOpen: Bool
-    @Binding var document: GPXViewerDocument
+    @Binding var document: GPXExploreDocument
     @Binding var visibleSegments: [Bool]
     @Binding var selectedTrackIndex: Int
     @Binding var segments: [GPXTrackSegment]
@@ -498,7 +498,7 @@ extension TracksDrawer {
 #Preview {
     TracksDrawer(
         isOpen: .constant(true),
-        document: .constant(GPXViewerDocument()),
+        document: .constant(GPXExploreDocument()),
         visibleSegments: .constant([true, false, true]),
         selectedTrackIndex: .constant(0),
         segments: .constant([]),

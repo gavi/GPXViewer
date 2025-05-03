@@ -3,12 +3,12 @@
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
 ## Build and Test Commands
-- Build: `xcodebuild -project GPXViewer.xcodeproj -scheme GPXViewer build`
-- Run: `xcodebuild -project GPXViewer.xcodeproj -scheme GPXViewer run`
-- Clean: `xcodebuild -project GPXViewer.xcodeproj -scheme GPXViewer clean`
+- Build: `xcodebuild -project GPXExplore.xcodeproj -scheme GPXExplore build`
+- Run: `xcodebuild -project GPXExplore.xcodeproj -scheme GPXExplore run`
+- Clean: `xcodebuild -project GPXExplore.xcodeproj -scheme GPXExplore clean`
 
 ## App Functionality
-- GPXViewer is a cross-platform macOS/iOS app for viewing GPX track files on a map with elevation data
+- GPXExplore is a cross-platform macOS/iOS app for viewing GPX track files on a map with elevation data
 - Key features: gradient-colored tracks based on elevation changes, display of track statistics
 - Core components:
   - `GPXParser`: Parses GPX files into route segments and locations

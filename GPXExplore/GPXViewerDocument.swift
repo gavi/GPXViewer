@@ -1,6 +1,6 @@
 //
-//  GPXViewerDocument.swift
-//  GPXViewer
+//  GPXExploreDocument.swift
+//  GPXExplore
 //
 //  Created by Gavi Narra on 4/29/25.
 //
@@ -16,7 +16,7 @@ extension UTType {
     }
 }
 
-struct GPXViewerDocument: FileDocument {
+struct GPXExploreDocument: FileDocument {
     var text: String
     var gpxFile: GPXFile?
     

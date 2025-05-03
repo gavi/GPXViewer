@@ -1,4 +1,4 @@
-# GPXViewer
+# GPXExplore
 
 A cross-platform macOS/iOS application for viewing GPX track files on a map with elevation data visualization.
 
@@ -24,26 +24,26 @@ Clone the repository and open the Xcode project:
 
 ```bash
 git clone <repository-url>
-cd GPXViewer
-open GPXViewer.xcodeproj
+cd GPXExplore
+open GPXExplore.xcodeproj
 ```
 
 Build and run the application using Xcode or with the following commands:
 
 ```bash
 # Build
-xcodebuild -project GPXViewer.xcodeproj -scheme GPXViewer build
+xcodebuild -project GPXExplore.xcodeproj -scheme GPXExplore build
 
 # Run
-xcodebuild -project GPXViewer.xcodeproj -scheme GPXViewer run
+xcodebuild -project GPXExplore.xcodeproj -scheme GPXExplore run
 
 # Clean
-xcodebuild -project GPXViewer.xcodeproj -scheme GPXViewer clean
+xcodebuild -project GPXExplore.xcodeproj -scheme GPXExplore clean
 ```
 
 ## Architecture
 
-GPXViewer follows the MVVM (Model-View-ViewModel) architecture pattern with SwiftUI:
+GPXExplore follows the MVVM (Model-View-ViewModel) architecture pattern with SwiftUI:
 
 - **Models**: Data structures and business logic
   - `SettingsModel`: Manages user preferences

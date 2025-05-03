@@ -1,6 +1,6 @@
 //
 //  ContentView.swift
-//  GPXViewer
+//  GPXExplore
 //
 //  Created by Gavi Narra on 4/29/25.
 //
@@ -10,7 +10,7 @@ import MapKit
 import CoreLocation
 
 struct ContentView: View {
-    @Binding var document: GPXViewerDocument
+    @Binding var document: GPXExploreDocument
     @StateObject private var settings = SettingsModel()
     @State private var isTracksDrawerOpen = false
     @State private var visibleSegments: [Bool] = []
@@ -119,5 +119,5 @@ struct ContentView: View {
 }
 
 #Preview {
-    ContentView(document: .constant(GPXViewerDocument()))
+    ContentView(document: .constant(GPXExploreDocument()))
 }
