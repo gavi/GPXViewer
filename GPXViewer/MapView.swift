@@ -952,8 +952,8 @@ extension MapView {
         let mapWidth = abs(mapPointTopLeft.x - mapPointBottomRight.x)
         let mapHeight = abs(mapPointTopLeft.y - mapPointBottomRight.y)
         
-        // Add a slight buffer by applying a 5% padding to the map region
-        let paddingFactor = 0.05 // 5% padding
+        // Add a slight buffer by applying a 10% padding to the map region
+        let paddingFactor = 0.10 // 10% padding
         let mapRect = MKMapRect(
             x: min(mapPointTopLeft.x, mapPointBottomRight.x) - mapWidth * paddingFactor,
             y: min(mapPointTopLeft.y, mapPointBottomRight.y) - mapHeight * paddingFactor,
