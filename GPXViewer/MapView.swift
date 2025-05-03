@@ -874,8 +874,10 @@ struct MapView: NSViewRepresentable {
 #if os(iOS) || os(macOS)
 
 // Custom annotation for waypoints
+// Custom annotation for waypoints
 class WaypointAnnotation: NSObject, MKAnnotation {
     let waypoint: GPXWaypoint
+    var _subtitle: String?
     
     var coordinate: CLLocationCoordinate2D {
         return waypoint.coordinate
@@ -886,12 +888,20 @@ class WaypointAnnotation: NSObject, MKAnnotation {
     }
     
     var subtitle: String? {
-        return waypoint.description
+        // Return custom subtitle if set, otherwise fallback to waypoint description
+        return _subtitle ?? waypoint.description
     }
     
     init(waypoint: GPXWaypoint) {
         self.waypoint = waypoint
         super.init()
+        
+        // Initialize with coordinate as subtitle if no description
+        if waypoint.description == nil || waypoint.description?.isEmpty == true {
+            let lat = String(format: "%.6f", waypoint.coordinate.latitude)
+            let lon = String(format: "%.6f", waypoint.coordinate.longitude)
+            _subtitle = "\(lat), \(lon)"
+        }
     }
 }
 
@@ -1148,117 +1158,129 @@ class Coordinator: NSObject, MKMapViewDelegate {
     }
     
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-        guard !annotation.isKind(of: MKUserLocation.self) else { return nil }
-        
-        // Use a different identifier for waypoints
-        let identifier = annotation is WaypointAnnotation ? "WaypointPin" : "WorkoutPin"
-        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-        
-        if annotationView == nil {
-            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-            annotationView?.canShowCallout = true
-        } else {
-            annotationView?.annotation = annotation
-        }
-        
-        if let markerView = annotationView as? MKMarkerAnnotationView {
-            // Handle waypoint annotations
-            if let waypointAnnotation = annotation as? WaypointAnnotation {
-                markerView.markerTintColor = .purple
-                #if os(iOS)
-                markerView.glyphImage = UIImage(systemName: "mappin")
-                #elseif os(macOS)
-                // Use SF Symbols on macOS 11+
-                if #available(macOS 11.0, *) {
-                    markerView.glyphImage = NSImage(systemSymbolName: "mappin", accessibilityDescription: "Waypoint")
-                } else {
-                    // Fallback for older macOS versions
-                    markerView.glyphText = "W"
-                }
-                #endif
-                
-                // Use custom glyph based on waypoint symbol if available
-                if let symbol = waypointAnnotation.waypoint.symbol {
-                    // Common GPX symbols can be mapped to SF Symbols
-                    let iconName: String
-                    switch symbol.lowercased() {
-                    case "flag", "summit":
-                        iconName = "flag"
-                    case "campground", "camp":
-                        iconName = "tent"
-                    case "water", "drinking-water":
-                        iconName = "drop"
-                    case "parking":
-                        iconName = "car"
-                    case "info", "information":
-                        iconName = "info.circle"
-                    case "danger", "caution":
-                        iconName = "exclamationmark.triangle"
-                    case "restaurant", "food":
-                        iconName = "fork.knife"
-                    default:
-                        iconName = "mappin"
+            guard !annotation.isKind(of: MKUserLocation.self) else { return nil }
+            
+            // Use a different identifier for waypoints
+            let identifier = annotation is WaypointAnnotation ? "WaypointPin" : "WorkoutPin"
+            var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+            
+            if annotationView == nil {
+                annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                annotationView?.canShowCallout = true
+            } else {
+                annotationView?.annotation = annotation
+            }
+            
+            if let markerView = annotationView as? MKMarkerAnnotationView {
+                // Handle waypoint annotations
+                if let waypointAnnotation = annotation as? WaypointAnnotation {
+                    markerView.markerTintColor = .purple
+                    #if os(iOS)
+                    markerView.glyphImage = UIImage(systemName: "mappin")
+                    // Add a button for copying coordinates
+                    let button = UIButton(type: .detailDisclosure)
+                    annotationView?.rightCalloutAccessoryView = button
+                    #elseif os(macOS)
+                    // Use SF Symbols on macOS 11+
+                    if #available(macOS 11.0, *) {
+                        markerView.glyphImage = NSImage(systemSymbolName: "mappin", accessibilityDescription: "Waypoint")
+                    } else {
+                        // Fallback for older macOS versions
+                        markerView.glyphText = "W"
+                    }
+                    // Add a button for copying coordinates on macOS
+                    let button = NSButton(title: "Copy", target: nil, action: nil)
+                    button.bezelStyle = .rounded
+                    annotationView?.rightCalloutAccessoryView = button
+                    #endif
+                    
+                    // Set subtitle with coordinates for all waypoints
+                    let coordinate = waypointAnnotation.coordinate
+                    let lat = String(format: "%.6f", coordinate.latitude)
+                    let lon = String(format: "%.6f", coordinate.longitude)
+                    waypointAnnotation._subtitle = "\(lat), \(lon)"
+                    
+                    // Use custom glyph based on waypoint symbol if available
+                    if let symbol = waypointAnnotation.waypoint.symbol {
+                        // Common GPX symbols can be mapped to SF Symbols
+                        let iconName: String
+                        switch symbol.lowercased() {
+                        case "flag", "summit":
+                            iconName = "flag"
+                        case "campground", "camp":
+                            iconName = "tent"
+                        case "water", "drinking-water":
+                            iconName = "drop"
+                        case "parking":
+                            iconName = "car"
+                        case "info", "information":
+                            iconName = "info.circle"
+                        case "danger", "caution":
+                            iconName = "exclamationmark.triangle"
+                        case "restaurant", "food":
+                            iconName = "fork.knife"
+                        default:
+                            iconName = "mappin"
+                        }
+                        
+                        #if os(iOS)
+                        markerView.glyphImage = UIImage(systemName: iconName)
+                        #elseif os(macOS)
+                        if #available(macOS 11.0, *) {
+                            markerView.glyphImage = NSImage(systemSymbolName: iconName, accessibilityDescription: symbol)
+                        }
+                        #endif
                     }
                     
+                    // Set priority for waypoints (higher than elevation markers)
+                    markerView.displayPriority = .defaultHigh
+                }
+                // Set appearance based on annotation type for track markers
+                else if annotation.title == "Start" {
+                    markerView.markerTintColor = .green
                     #if os(iOS)
-                    markerView.glyphImage = UIImage(systemName: iconName)
+                    markerView.glyphImage = UIImage(systemName: "flag.fill")
                     #elseif os(macOS)
+                    // Use SF Symbols on macOS 11+
                     if #available(macOS 11.0, *) {
-                        markerView.glyphImage = NSImage(systemSymbolName: iconName, accessibilityDescription: symbol)
+                        markerView.glyphImage = NSImage(systemSymbolName: "flag.fill", accessibilityDescription: "Start")
+                    } else {
+                        // Fallback for older macOS versions
+                        markerView.glyphText = "S"
                     }
                     #endif
+                } else if annotation.title == "End" {
+                    markerView.markerTintColor = .red
+                    #if os(iOS)
+                    markerView.glyphImage = UIImage(systemName: "flag.checkered")
+                    #elseif os(macOS)
+                    // Use SF Symbols on macOS 11+
+                    if #available(macOS 11.0, *) {
+                        markerView.glyphImage = NSImage(systemSymbolName: "flag.checkered", accessibilityDescription: "End")
+                    } else {
+                        // Fallback for older macOS versions
+                        markerView.glyphText = "E"
+                    }
+                    #endif
+                } else if annotation.title == "Peak" {
+                    markerView.markerTintColor = .orange
+                    #if os(iOS)
+                    markerView.glyphImage = UIImage(systemName: "arrow.up")
+                    #elseif os(macOS)
+                    markerView.glyphText = "▲"
+                    #endif
+                    markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
+                } else if annotation.title == "Valley" {
+                    markerView.markerTintColor = .blue
+                    #if os(iOS)
+                    markerView.glyphImage = UIImage(systemName: "arrow.down")
+                    #elseif os(macOS)
+                    markerView.glyphText = "▼"
+                    #endif
+                    markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
                 }
-                
-                // Set priority for waypoints (higher than elevation markers)
-                markerView.displayPriority = .defaultHigh
             }
-            // Set appearance based on annotation type for track markers
-            else if annotation.title == "Start" {
-                markerView.markerTintColor = .green
-                #if os(iOS)
-                markerView.glyphImage = UIImage(systemName: "flag.fill")
-                #elseif os(macOS)
-                // Use SF Symbols on macOS 11+
-                if #available(macOS 11.0, *) {
-                    markerView.glyphImage = NSImage(systemSymbolName: "flag.fill", accessibilityDescription: "Start")
-                } else {
-                    // Fallback for older macOS versions
-                    markerView.glyphText = "S"
-                }
-                #endif
-            } else if annotation.title == "End" {
-                markerView.markerTintColor = .red
-                #if os(iOS)
-                markerView.glyphImage = UIImage(systemName: "flag.checkered")
-                #elseif os(macOS)
-                // Use SF Symbols on macOS 11+
-                if #available(macOS 11.0, *) {
-                    markerView.glyphImage = NSImage(systemSymbolName: "flag.checkered", accessibilityDescription: "End")
-                } else {
-                    // Fallback for older macOS versions
-                    markerView.glyphText = "E"
-                }
-                #endif
-            } else if annotation.title == "Peak" {
-                markerView.markerTintColor = .orange
-                #if os(iOS)
-                markerView.glyphImage = UIImage(systemName: "arrow.up")
-                #elseif os(macOS)
-                markerView.glyphText = "▲"
-                #endif
-                markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
-            } else if annotation.title == "Valley" {
-                markerView.markerTintColor = .blue
-                #if os(iOS)
-                markerView.glyphImage = UIImage(systemName: "arrow.down")
-                #elseif os(macOS)
-                markerView.glyphText = "▼"
-                #endif
-                markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
-            }
-        }
-        
-        return annotationView
-    }
-}
+            
+            return annotationView
+        }}
 
