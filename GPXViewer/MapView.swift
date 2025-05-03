@@ -1057,7 +1057,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
             
             // Create and apply the region with animation
             let region = MKCoordinateRegion(center: center, span: span)
-            mapView.setRegion(region, animated: true)
+            mapView.setRegion(region, animated: false)
             
             // Reset initial load flag
             self.isInitialLoad = false
