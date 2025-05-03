@@ -70,11 +70,11 @@ class ElevationPolyline: MKPolyline {
                     
                     // Debug every 20th point to avoid console flood
                     if i % 20 == 0 {
-                        print("Point \(i): window \(startIdx)-\(endIdx), elev diff: \(elevation2-elevation1)m, " +
-                              "horiz dist: \(horizontalDistance)m, grade: \(originalGrade) → \(grade)")
+                        //print("Point \(i): window \(startIdx)-\(endIdx), elev diff: \(elevation2-elevation1)m, " +
+                              //"horiz dist: \(horizontalDistance)m, grade: \(originalGrade) → \(grade)")
                     }
                 } else if i % 20 == 0 {
-                    print("Point \(i): window \(startIdx)-\(endIdx), horizontal distance too small (\(horizontalDistance)m)")
+                    //print("Point \(i): window \(startIdx)-\(endIdx), horizontal distance too small (\(horizontalDistance)m)")
                 }
                 
                 // Preserve small grade changes rather than zeroing them out
@@ -246,14 +246,14 @@ class GradientPolylineRenderer: MKPolylineRenderer {
                 // Try to use precomputed grades first if available
                 if !elevationPolyline.grades.isEmpty && indexA < elevationPolyline.grades.count {
                     grade = elevationPolyline.grades[indexA]
-                    print("Segment \(i): Using precomputed grade: \(grade)")
+                    //print("Segment \(i): Using precomputed grade: \(grade)")
                 }
                 // If grade is zero or grades aren't available, calculate it
                 else if horizontalDistance > 1.0 {  // Avoid division by very small numbers
                     grade = (elevationB - elevationA) / horizontalDistance
                     
                     // Debug elevation info
-                    print("Segment \(i): elevA=\(elevationA), elevB=\(elevationB), diff=\(elevationB-elevationA), horizDist=\(horizontalDistance), rawGrade=\(grade)")
+                    //print("Segment \(i): elevA=\(elevationA), elevB=\(elevationB), diff=\(elevationB-elevationA), horizDist=\(horizontalDistance), rawGrade=\(grade)")
                     
                     // Filter out unrealistic grades from GPS noise
                     // Real-world roads/trails rarely exceed 30-35% grade
@@ -261,16 +261,16 @@ class GradientPolylineRenderer: MKPolylineRenderer {
                         // Apply a more reasonable limit
                         let oldGrade = grade
                         grade = grade > 0 ? 0.35 : -0.35
-                        print("  Clamping grade from \(oldGrade) to \(grade)")
+                        //print("  Clamping grade from \(oldGrade) to \(grade)")
                     }
                     
                     // Apply a minimum threshold to avoid flat line when elevation is changing
                     if abs(grade) < 0.01 && abs(elevationB - elevationA) > 0.5 {
                         grade = (elevationB > elevationA) ? 0.01 : -0.01
-                        print("  Boosting small grade to \(grade)")
+                        //print("  Boosting small grade to \(grade)")
                     }
                 } else {
-                    print("Segment \(i): Horizontal distance too small (\(horizontalDistance)m), using grade=0")
+                    //print("Segment \(i): Horizontal distance too small (\(horizontalDistance)m), using grade=0")
                 }
                 
                 // Get color based on grade rather than absolute elevation
@@ -327,7 +327,7 @@ class GradientPolylineRenderer: MKPolylineRenderer {
         var callCounter = self.callCounter
         callCounter += 1
         if callCounter % 20 == 0 {
-            print("colorForGrade call #\(callCounter): input: \(grade), clamped: \(clampedGrade)")
+            //print("colorForGrade call #\(callCounter): input: \(grade), clamped: \(clampedGrade)")
         }
         self.callCounter = callCounter
         
@@ -514,7 +514,7 @@ struct MapView: UIViewRepresentable {
             addElevationMarkers(to: mapView, routeLocations: allLocations)
             
             // Set the region to show all segments
-            setRegion(for: mapView, from: allLocations)
+            MapView.setRegion(for: mapView, from: allLocations)
             
             // Add start and end annotations using the first and last segments
             if let firstSegment = trackSegments.first, 
@@ -639,7 +639,7 @@ struct MapView: UIViewRepresentable {
                 // Collect all locations
                 if !allLocations.isEmpty {
                     // Set the map region to fit all visible segments
-                    setRegion(for: mapView, from: allLocations)
+                    MapView.setRegion(for: mapView, from: allLocations)
                 }
             }
         }
@@ -749,7 +749,7 @@ struct MapView: NSViewRepresentable {
             addElevationMarkers(to: mapView, routeLocations: allLocations)
             
             // Set the region to show all segments
-            setRegion(for: mapView, from: allLocations)
+            MapView.setRegion(for: mapView, from: allLocations)
             
             // Add start and end annotations using the first and last segments
             if let firstSegment = trackSegments.first, 
@@ -860,7 +860,7 @@ struct MapView: NSViewRepresentable {
             // Collect all locations
             if !allLocations.isEmpty {
                 // Set the map region to fit all visible segments
-                setRegion(for: mapView, from: allLocations)
+                MapView.setRegion(for: mapView, from: allLocations)
             }
         }
     }
@@ -994,7 +994,7 @@ extension MapView {
         }
     }
     
-    func setRegion(for mapView: MKMapView, from locations: [CLLocation]) {
+    public static func setRegion(for mapView: MKMapView, from locations: [CLLocation]) {
         guard !locations.isEmpty else { return }
         
         // Find min/max coordinates
@@ -1010,67 +1010,27 @@ extension MapView {
             maxLon = max(maxLon, location.coordinate.longitude)
         }
         
-        // Calculate center point
+        // Create region with padding
         let center = CLLocationCoordinate2D(
             latitude: (minLat + maxLat) / 2,
             longitude: (minLon + maxLon) / 2
         )
         
-        // Create points from our bounds
-        let topLeft = CLLocationCoordinate2D(latitude: maxLat, longitude: minLon)
-        let bottomRight = CLLocationCoordinate2D(latitude: minLat, longitude: maxLon)
-        
-        // Convert to map points
-        let mapPointCenter = MKMapPoint(center)
-        let mapPointTopLeft = MKMapPoint(topLeft)
-        let mapPointBottomRight = MKMapPoint(bottomRight)
-        
-        // Calculate width and height in map points
-        let mapWidth = abs(mapPointTopLeft.x - mapPointBottomRight.x)
-        let mapHeight = abs(mapPointTopLeft.y - mapPointBottomRight.y)
-        
-        // Add a slight buffer by applying a 10% padding to the map region
-        let paddingFactor = 0.10 // 10% padding
-        let mapRect = MKMapRect(
-            x: min(mapPointTopLeft.x, mapPointBottomRight.x) - mapWidth * paddingFactor,
-            y: min(mapPointTopLeft.y, mapPointBottomRight.y) - mapHeight * paddingFactor,
-            width: mapWidth * (1 + 2 * paddingFactor),
-            height: mapHeight * (1 + 2 * paddingFactor)
+        let span = MKCoordinateSpan(
+            latitudeDelta: (maxLat - minLat) * 1.5,
+            longitudeDelta: (maxLon - minLon) * 1.5
         )
         
-        // Ensure the rect has a minimum size (prevent extreme zoom in)
-        let minSize: Double = 100.0
-        var adjustedRect = mapRect
-        if mapRect.size.width < minSize || mapRect.size.height < minSize {
-            let center = MKMapPoint(
-                x: mapRect.midX,
-                y: mapRect.midY
-            )
-            adjustedRect = MKMapRect(
-                x: center.x - minSize/2,
-                y: center.y - minSize/2,
-                width: minSize,
-                height: minSize
-            )
-        }
-        
-        // Set map view to show this rect
-        // Use a slightly tighter zoom level by applying a scale factor
-        let region = MKCoordinateRegion(adjustedRect)
-        let zoomFactor = 0.9 // Zoom in slightly (1.0 = original region, <1.0 = zoom in)
-        let zoomedRegion = MKCoordinateRegion(
-            center: region.center,
+        // Ensure minimum zoom level
+        let region = MKCoordinateRegion(
+            center: center,
             span: MKCoordinateSpan(
-                latitudeDelta: region.span.latitudeDelta * zoomFactor,
-                longitudeDelta: region.span.longitudeDelta * zoomFactor
+                latitudeDelta: max(span.latitudeDelta, 0.01),
+                longitudeDelta: max(span.longitudeDelta, 0.01)
             )
         )
         
-        mapView.setRegion(zoomedRegion, animated: false)
-        
-        print("Set map region: center=(\(center.latitude), \(center.longitude)), " +
-              "rect=(\(mapRect.origin.x), \(mapRect.origin.y), \(mapRect.size.width), \(mapRect.size.height)), " +
-              "zoom factor: \(zoomFactor)")
+        mapView.setRegion(region, animated: false)
     }
 }
 #endif
@@ -1113,28 +1073,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
             
             print("Performing delayed zoom after initial load")
             
-            // Create min/max coordinates for locations
-            let minLat = locations.map { $0.coordinate.latitude }.min() ?? 0
-            let maxLat = locations.map { $0.coordinate.latitude }.max() ?? 0
-            let minLon = locations.map { $0.coordinate.longitude }.min() ?? 0
-            let maxLon = locations.map { $0.coordinate.longitude }.max() ?? 0
-            
-            // Create center coordinate
-            let center = CLLocationCoordinate2D(
-                latitude: (minLat + maxLat) / 2,
-                longitude: (minLon + maxLon) / 2
-            )
-            
-            // Create coordinate span with fixed zoom factor
-            let zoomFactor = 0.8 // Tighter zoom (80% of full span)
-            let span = MKCoordinateSpan(
-                latitudeDelta: (maxLat - minLat) * zoomFactor,
-                longitudeDelta: (maxLon - minLon) * zoomFactor
-            )
-            
-            // Create and apply the region with animation
-            let region = MKCoordinateRegion(center: center, span: span)
-            mapView.setRegion(region, animated: false)
+            MapView.setRegion(for: mapView, from: locations)
             
             // Reset initial load flag
             self.isInitialLoad = false
