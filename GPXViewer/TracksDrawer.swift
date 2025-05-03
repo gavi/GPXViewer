@@ -12,10 +12,12 @@ struct TracksDrawer: View {
     @Binding var visibleSegments: [Bool]
     @Binding var selectedTrackIndex: Int
     @Binding var segments: [GPXTrackSegment]
+    @Binding var waypointsVisible: Bool
     @EnvironmentObject var settings: SettingsModel
     
     // Track expansion states
     @State private var expandedTracks: [Bool] = []
+    @State private var waypointsExpanded: Bool = true
     
     // Helper function to calculate segment length
     private func calculateSegmentLength(_ locations: [CLLocation]) -> Double {
@@ -63,7 +65,7 @@ struct TracksDrawer: View {
         VStack(alignment: .leading, spacing: 0) {
             // Header
             HStack {
-                Text("Tracks & Segments")
+                Text("Tracks & Waypoints")
                     .font(.headline)
                     .padding(.vertical, 8)
                 
@@ -79,9 +81,10 @@ struct TracksDrawer: View {
             
             Divider()
             
-            // Tree View of tracks and segments
+            // Tree View of tracks, segments, and waypoints
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    // Tracks and segments
                     ForEach(0..<document.tracks.count, id: \.self) { trackIndex in
                         let track = document.tracks[trackIndex]
                         let isExpanded = expandedTracks.indices.contains(trackIndex) ? expandedTracks[trackIndex] : true
@@ -126,6 +129,36 @@ struct TracksDrawer: View {
                                         )
                                     }
                                 }
+                            }
+                        }
+                    }
+                    
+                    // Only show waypoints section if there are waypoints
+                    if !document.waypoints.isEmpty {
+                        Divider()
+                            .padding(.vertical, 8)
+                        
+                        // Waypoints section header with disclosure triangle
+                        WaypointsHeaderRow(
+                            waypointCount: document.waypoints.count,
+                            isExpanded: waypointsExpanded,
+                            isVisible: waypointsVisible,
+                            onToggle: {
+                                waypointsExpanded.toggle()
+                            },
+                            onToggleVisibility: {
+                                waypointsVisible.toggle()
+                            }
+                        )
+                        
+                        // Waypoint rows (only show if expanded)
+                        if waypointsExpanded {
+                            ForEach(0..<document.waypoints.count, id: \.self) { waypointIndex in
+                                let waypoint = document.waypoints[waypointIndex]
+                                WaypointRow(
+                                    waypoint: waypoint,
+                                    waypointIndex: waypointIndex
+                                )
                             }
                         }
                     }
@@ -301,6 +334,154 @@ struct SegmentRow: View {
     }
 }
 
+// Waypoints header row component
+struct WaypointsHeaderRow: View {
+    let waypointCount: Int
+    let isExpanded: Bool
+    let isVisible: Bool
+    let onToggle: () -> Void
+    let onToggleVisibility: () -> Void
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            // Disclosure triangle
+            Button(action: onToggle) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .frame(width: 16, height: 16)
+                    #if os(iOS)
+                    .foregroundColor(Color(UIColor.secondaryLabel))
+                    #else
+                    .foregroundColor(Color.secondary)
+                    #endif
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            
+            // Visibility toggle
+            Button(action: onToggleVisibility) {
+                Image(systemName: isVisible ? "eye" : "eye.slash")
+                    .frame(width: 20, height: 20)
+                    #if os(iOS)
+                    .foregroundColor(isVisible ? Color(UIColor.systemBlue) : Color(UIColor.systemGray))
+                    #else
+                    .foregroundColor(isVisible ? Color.accentColor : Color.gray)
+                    #endif
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            
+            // Header text
+            Text("Waypoints (\(waypointCount))")
+                .font(.system(size: 14, weight: .bold))
+                .padding(.vertical, 6)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 12)
+        .contentShape(Rectangle())
+    }
+}
+
+// Waypoint row component
+struct WaypointRow: View {
+    let waypoint: GPXWaypoint
+    let waypointIndex: Int
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            // Indentation
+            Spacer()
+                .frame(width: 16)
+            
+            // Waypoint icon
+            Image(systemName: getIconForWaypoint(waypoint))
+                .frame(width: 20, height: 20)
+                #if os(iOS)
+                .foregroundColor(Color(UIColor.systemPurple))
+                #else
+                .foregroundColor(Color.purple)
+                #endif
+            
+            // Waypoint info
+            VStack(alignment: .leading, spacing: 2) {
+                Text(waypoint.name)
+                    .font(.system(size: 13))
+                    .lineLimit(1)
+                
+                if let description = waypoint.description, !description.isEmpty {
+                    Text(description)
+                        .font(.system(size: 11))
+                        .lineLimit(1)
+                        #if os(iOS)
+                        .foregroundColor(Color(UIColor.secondaryLabel))
+                        #else
+                        .foregroundColor(Color.secondary)
+                        #endif
+                }
+                
+                if let elevation = waypoint.elevation {
+                    Text("Elevation: \(Int(elevation))m")
+                        .font(.system(size: 11))
+                        #if os(iOS)
+                        .foregroundColor(Color(UIColor.secondaryLabel))
+                        #else
+                        .foregroundColor(Color.secondary)
+                        #endif
+                }
+            }
+            
+            Spacer()
+        }
+        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.leading, 20) // Indentation for hierarchy
+    }
+    
+    // Helper to determine icon based on waypoint symbol or name
+    private func getIconForWaypoint(_ waypoint: GPXWaypoint) -> String {
+        if let symbol = waypoint.symbol {
+            // Match common GPX symbols to SF Symbols
+            switch symbol.lowercased() {
+            case "flag", "summit":
+                return "flag"
+            case "campground", "camp":
+                return "tent"
+            case "water", "drinking-water":
+                return "drop"
+            case "parking":
+                return "car"
+            case "info", "information":
+                return "info.circle"
+            case "danger", "caution":
+                return "exclamationmark.triangle"
+            case "restaurant", "food":
+                return "fork.knife"
+            default:
+                break
+            }
+        }
+        
+        // Fallback to matching by name
+        let name = waypoint.name.lowercased()
+        if name.contains("parking") || name.contains("car") {
+            return "car"
+        } else if name.contains("water") {
+            return "drop"
+        } else if name.contains("camp") {
+            return "tent"
+        } else if name.contains("summit") || name.contains("peak") {
+            return "mountain.2"
+        } else if name.contains("food") || name.contains("restaurant") {
+            return "fork.knife"
+        } else if name.contains("info") {
+            return "info.circle"
+        } else if name.contains("danger") || name.contains("caution") {
+            return "exclamationmark.triangle"
+        }
+        
+        // Default icon
+        return "mappin"
+    }
+}
+
 // Extension to use in ContentView for toolbar button
 extension TracksDrawer {
     static func toolbarButton(isOpen: Binding<Bool>) -> some View {
@@ -320,7 +501,8 @@ extension TracksDrawer {
         document: .constant(GPXViewerDocument()),
         visibleSegments: .constant([true, false, true]),
         selectedTrackIndex: .constant(0),
-        segments: .constant([])
+        segments: .constant([]),
+        waypointsVisible: .constant(true)
     )
     .environmentObject(SettingsModel())
 }

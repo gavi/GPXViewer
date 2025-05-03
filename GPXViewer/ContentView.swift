@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var visibleSegments: [Bool] = []
     @State private var selectedTrackIndex: Int = 0
     @State private var segments: [GPXTrackSegment] = []
+    @State private var waypointsVisible: Bool = true
     
     private func updateFromDocument() {
         segments = document.trackSegments
@@ -59,9 +60,12 @@ struct ContentView: View {
                     // Main map content
                     ZStack {
                         // Map view as the base layer
-                        MapView(trackSegments: visibleTrackSegments)
-                            .environmentObject(settings)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        MapView(
+                            trackSegments: visibleTrackSegments,
+                            waypoints: waypointsVisible ? document.waypoints : []
+                        )
+                        .environmentObject(settings)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                         
                         // Overlay with route information
                         if let track = selectedTrack {
@@ -77,7 +81,8 @@ struct ContentView: View {
                             document: $document,
                             visibleSegments: $visibleSegments,
                             selectedTrackIndex: $selectedTrackIndex,
-                            segments: $segments
+                            segments: $segments,
+                            waypointsVisible: $waypointsVisible
                         )
                         .environmentObject(settings)
                         .transition(.move(edge: .trailing))

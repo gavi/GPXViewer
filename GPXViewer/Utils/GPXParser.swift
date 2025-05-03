@@ -111,9 +111,37 @@ struct GPXTrack {
 }
 
 // Container for multiple tracks from a single GPX file
+// Represents a waypoint (POI) from GPX file
+struct GPXWaypoint: Equatable {
+    let name: String
+    let description: String?
+    let coordinate: CLLocationCoordinate2D
+    let elevation: Double?
+    let timestamp: Date?
+    let symbol: String?
+    
+    static func == (lhs: GPXWaypoint, rhs: GPXWaypoint) -> Bool {
+        return lhs.name == rhs.name &&
+               lhs.description == rhs.description &&
+               lhs.coordinate.latitude == rhs.coordinate.latitude &&
+               lhs.coordinate.longitude == rhs.coordinate.longitude &&
+               lhs.elevation == rhs.elevation &&
+               lhs.timestamp == rhs.timestamp &&
+               lhs.symbol == rhs.symbol
+    }
+}
+
 struct GPXFile {
     let filename: String
     let tracks: [GPXTrack]
+    let waypoints: [GPXWaypoint]
+    
+    // Default initializer with empty waypoints
+    init(filename: String, tracks: [GPXTrack], waypoints: [GPXWaypoint] = []) {
+        self.filename = filename
+        self.tracks = tracks
+        self.waypoints = waypoints
+    }
     
     // Get the "primary" track for backward compatibility
     var primaryTrack: GPXTrack? {
@@ -163,6 +191,39 @@ class GPXParser {
         
         print("Loaded \(tracks.count) sample tracks from assets")
         return tracks
+    }
+    
+    // Method to load sample waypoints from GPX files
+    static func loadSampleWaypoints() -> [GPXWaypoint] {
+        var waypoints: [GPXWaypoint] = []
+        
+        // Look for GPX files in the Samples directory
+        let samplesDirPath = Bundle.main.bundlePath + "/Samples"
+        let fileManager = FileManager.default
+        
+        if fileManager.fileExists(atPath: samplesDirPath) {
+            do {
+                let files = try fileManager.contentsOfDirectory(atPath: samplesDirPath)
+                for file in files where file.hasSuffix(".gpx") {
+                    let fileURL = URL(fileURLWithPath: samplesDirPath + "/" + file)
+                    let gpxFile = parseGPXFile(at: fileURL)
+                    waypoints.append(contentsOf: gpxFile.waypoints)
+                }
+            } catch {
+                print("Error reading Samples directory: \(error)")
+            }
+        }
+        
+        // Try to find using resource URLs
+        if let samplesURLs = Bundle.main.urls(forResourcesWithExtension: "gpx", subdirectory: nil) {
+            for url in samplesURLs {
+                let gpxFile = parseGPXFile(at: url)
+                waypoints.append(contentsOf: gpxFile.waypoints)
+            }
+        }
+        
+        print("Loaded \(waypoints.count) sample waypoints from assets")
+        return waypoints
     }    
     
     static func parseGPXFile(at url: URL) -> GPXFile {
@@ -240,7 +301,7 @@ class GPXParser {
             
             guard let data = fileData else {
                 print("Could not read file data even with coordination")
-                return GPXFile(filename: resolvedURL.lastPathComponent, tracks: [])
+                return GPXFile(filename: resolvedURL.lastPathComponent, tracks: [], waypoints: [])
             }
             
             xmlData = data
@@ -269,8 +330,8 @@ class GPXParser {
         }
         
         // Log parsing results
-        let resultFile = GPXFile(filename: filename, tracks: namedTracks)
-        print("Parsed GPX file \(filename): Found \(resultFile.tracks.count) tracks with \(resultFile.allSegments.count) segments")
+        let resultFile = GPXFile(filename: filename, tracks: namedTracks, waypoints: gpxFile.waypoints)
+        print("Parsed GPX file \(filename): Found \(resultFile.tracks.count) tracks with \(resultFile.allSegments.count) segments and \(resultFile.waypoints.count) waypoints")
         
         return resultFile
     }
@@ -281,16 +342,20 @@ class GPXParser {
         parser.delegate = delegate
         
         if parser.parse() {
-            // Return all parsed tracks
-            let result = GPXFile(filename: filename, tracks: delegate.tracks)
+            // Return all parsed tracks and waypoints
+            let result = GPXFile(filename: filename, tracks: delegate.tracks, waypoints: delegate.waypoints)
             
             // Success validation - verify we have meaningful data
-            if result.tracks.isEmpty {
-                print("Warning: GPX file parsed successfully but no tracks found")
-            } else if result.allSegments.isEmpty {
+            if result.tracks.isEmpty && result.waypoints.isEmpty {
+                print("Warning: GPX file parsed successfully but no tracks or waypoints found")
+            } else if !result.tracks.isEmpty && result.allSegments.isEmpty {
                 print("Warning: GPX file has \(result.tracks.count) tracks but no segments")
-            } else if result.allSegments.allSatisfy({ $0.locations.isEmpty }) {
+            } else if !result.tracks.isEmpty && result.allSegments.allSatisfy({ $0.locations.isEmpty }) {
                 print("Warning: GPX file has \(result.tracks.count) tracks and \(result.allSegments.count) segments, but no location points")
+            }
+            
+            if !result.waypoints.isEmpty {
+                print("Found \(result.waypoints.count) waypoints in GPX file")
             }
             
             return result
@@ -307,8 +372,8 @@ class GPXParser {
             if let xmlString = String(data: data, encoding: .utf8) {
                 if !xmlString.contains("<gpx") {
                     print("Warning: File does not appear to be a GPX file (missing <gpx> tag)")
-                } else if !xmlString.contains("<trk") {
-                    print("Warning: GPX file does not contain any tracks (missing <trk> tag)")
+                } else if !xmlString.contains("<trk") && !xmlString.contains("<wpt") {
+                    print("Warning: GPX file does not contain any tracks or waypoints (missing <trk> or <wpt> tags)")
                 }
                 
                 // Log file size and beginning of content for diagnostics
@@ -318,7 +383,7 @@ class GPXParser {
                 print("Content preview: \(preview)...")
             }
             
-            return GPXFile(filename: filename, tracks: [])
+            return GPXFile(filename: filename, tracks: [], waypoints: [])
         }
     }
 }
@@ -334,11 +399,17 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
     private var currentTrackType = ""
     private var currentTrackDate = Date()
     
+    // Current waypoint data
+    private var currentWaypointName = ""
+    private var currentWaypointDesc: String?
+    private var currentWaypointSymbol: String?
+    
     // Track the current element context
     private var isTrack = false
     private var isTrackSegment = false
     private var isTrackPoint = false
     private var isMetadata = false
+    private var isWaypoint = false
     
     // Data for the current point
     private var currentLat: Double?
@@ -350,14 +421,20 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
     private var currentSegmentPoints: [CLLocation] = []
     private var currentTrackSegments: [GPXTrackSegment] = []
     
-    // Store all completed tracks
+    // Store all completed tracks and waypoints
     private var completedTracks: [GPXTrack] = []
+    private var completedWaypoints: [GPXWaypoint] = []
     
     // Public property to access all parsed tracks
     var tracks: [GPXTrack] {
         // Check if we have an in-progress track that needs to be finalized
         finalizeCurrentTrackIfNeeded()
         return completedTracks
+    }
+    
+    // Public property to access all parsed waypoints
+    var waypoints: [GPXWaypoint] {
+        return completedWaypoints
     }
     
     // Finalize the current track if it has any segments with points
@@ -416,6 +493,16 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
             currentEle = nil
             currentTime = nil
             
+        case "wpt":
+            isWaypoint = true
+            currentLat = Double(attributeDict["lat"] ?? "0")
+            currentLon = Double(attributeDict["lon"] ?? "0")
+            currentEle = nil
+            currentTime = nil
+            currentWaypointName = ""
+            currentWaypointDesc = nil
+            currentWaypointSymbol = nil
+            
         default:
             break
         }
@@ -432,6 +519,22 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
             case "time":
                 let formatter = ISO8601DateFormatter()
                 currentTime = formatter.date(from: trimmedString)
+            default:
+                break
+            }
+        } else if isWaypoint {
+            switch currentElement {
+            case "ele":
+                currentEle = Double(trimmedString)
+            case "time":
+                let formatter = ISO8601DateFormatter()
+                currentTime = formatter.date(from: trimmedString)
+            case "name":
+                currentWaypointName = trimmedString
+            case "desc":
+                currentWaypointDesc = trimmedString
+            case "sym":
+                currentWaypointSymbol = trimmedString
             default:
                 break
             }
@@ -480,6 +583,20 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
                 currentSegmentPoints.append(location)
             }
             isTrackPoint = false
+            
+        case "wpt":
+            if isWaypoint, let lat = currentLat, let lon = currentLon {
+                let waypoint = GPXWaypoint(
+                    name: currentWaypointName.isEmpty ? "POI" : currentWaypointName,
+                    description: currentWaypointDesc,
+                    coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                    elevation: currentEle,
+                    timestamp: currentTime,
+                    symbol: currentWaypointSymbol
+                )
+                completedWaypoints.append(waypoint)
+            }
+            isWaypoint = false
             
         case "trkseg":
             // End of segment - add it to the current track's segments

@@ -33,6 +33,10 @@ struct GPXViewerDocument: FileDocument {
         return gpxFile?.allSegments ?? []
     }
     
+    var waypoints: [GPXWaypoint] {
+        return gpxFile?.waypoints ?? []
+    }
+    
     init(text: String = "") {
         self.text = text
     }
@@ -73,7 +77,7 @@ struct GPXViewerDocument: FileDocument {
         // Log whether parsing was successful
         if let gpxFile = self.gpxFile {
             print("Successfully parsed GPX file: \(filename)")
-            print("Found \(gpxFile.tracks.count) tracks with \(gpxFile.allSegments.count) total segments")
+            print("Found \(gpxFile.tracks.count) tracks with \(gpxFile.allSegments.count) total segments and \(gpxFile.waypoints.count) waypoints")
         } else {
             print("Failed to parse GPX data from \(filename)")
         }

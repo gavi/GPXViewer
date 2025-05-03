@@ -414,16 +414,25 @@ class GradientPolylineRenderer: MKPolylineRenderer {
 #if os(iOS)
 struct MapView: UIViewRepresentable {
     let trackSegments: [GPXTrackSegment]
+    let waypoints: [GPXWaypoint]
     @EnvironmentObject var settings: SettingsModel
     
     // Convenience init to maintain backward compatibility
     init(routeLocations: [CLLocation]) {
         self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
+        self.waypoints = []
     }
     
     // New initializer for multiple segments
     init(trackSegments: [GPXTrackSegment]) {
         self.trackSegments = trackSegments
+        self.waypoints = []
+    }
+    
+    // New initializer for segments and waypoints
+    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint]) {
+        self.trackSegments = trackSegments
+        self.waypoints = waypoints
     }
     
     func makeUIView(context: Context) -> MKMapView {
@@ -524,6 +533,13 @@ struct MapView: UIViewRepresentable {
                 mapView.addAnnotations([startPoint, endPoint])
             }
             
+            // Add waypoint annotations
+            if !waypoints.isEmpty {
+                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
+                mapView.addAnnotations(waypointAnnotations)
+                print("Added \(waypointAnnotations.count) waypoint annotations to map")
+            }
+            
             // Store the locations for delayed zoom (this will be applied in updateUIView)
             context.coordinator.initialLoadLocations = allLocations
         }
@@ -593,6 +609,12 @@ struct MapView: UIViewRepresentable {
                 
                 mapView.addAnnotations([startPoint, endPoint])
             }
+            
+            // Add waypoint annotations
+            if !waypoints.isEmpty {
+                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
+                mapView.addAnnotations(waypointAnnotations)
+            }
         }
         
         // Handling initial load delayed zoom
@@ -630,16 +652,25 @@ struct MapView: UIViewRepresentable {
 #else
 struct MapView: NSViewRepresentable {
     let trackSegments: [GPXTrackSegment]
+    let waypoints: [GPXWaypoint]
     @EnvironmentObject var settings: SettingsModel
     
     // Convenience init to maintain backward compatibility
     init(routeLocations: [CLLocation]) {
         self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
+        self.waypoints = []
     }
     
     // New initializer for multiple segments
     init(trackSegments: [GPXTrackSegment]) {
         self.trackSegments = trackSegments
+        self.waypoints = []
+    }
+    
+    // New initializer for segments and waypoints
+    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint]) {
+        self.trackSegments = trackSegments
+        self.waypoints = waypoints
     }
     
     func makeNSView(context: Context) -> MKMapView {
@@ -736,6 +767,13 @@ struct MapView: NSViewRepresentable {
                 
                 mapView.addAnnotations([startPoint, endPoint])
             }
+            
+            // Add waypoint annotations
+            if !waypoints.isEmpty {
+                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
+                mapView.addAnnotations(waypointAnnotations)
+                print("Added \(waypointAnnotations.count) waypoint annotations to map")
+            }
         }
         
         return mapView
@@ -803,6 +841,12 @@ struct MapView: NSViewRepresentable {
                 
                 mapView.addAnnotations([startPoint, endPoint])
             }
+            
+            // Add waypoint annotations
+            if !waypoints.isEmpty {
+                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
+                mapView.addAnnotations(waypointAnnotations)
+            }
         }
         
         // Adjust the map view region in these cases:
@@ -828,6 +872,29 @@ struct MapView: NSViewRepresentable {
 #endif
     
 #if os(iOS) || os(macOS)
+
+// Custom annotation for waypoints
+class WaypointAnnotation: NSObject, MKAnnotation {
+    let waypoint: GPXWaypoint
+    
+    var coordinate: CLLocationCoordinate2D {
+        return waypoint.coordinate
+    }
+    
+    var title: String? {
+        return waypoint.name
+    }
+    
+    var subtitle: String? {
+        return waypoint.description
+    }
+    
+    init(waypoint: GPXWaypoint) {
+        self.waypoint = waypoint
+        super.init()
+    }
+}
+
 // Helper functions shared by both platforms
 extension MapView {
     func createElevationPolyline(from locations: [CLLocation]) -> ElevationPolyline {
@@ -1083,7 +1150,8 @@ class Coordinator: NSObject, MKMapViewDelegate {
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
         guard !annotation.isKind(of: MKUserLocation.self) else { return nil }
         
-        let identifier = "WorkoutPin"
+        // Use a different identifier for waypoints
+        let identifier = annotation is WaypointAnnotation ? "WaypointPin" : "WorkoutPin"
         var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
         
         if annotationView == nil {
@@ -1094,8 +1162,58 @@ class Coordinator: NSObject, MKMapViewDelegate {
         }
         
         if let markerView = annotationView as? MKMarkerAnnotationView {
-            // Set appearance based on annotation type
-            if annotation.title == "Start" {
+            // Handle waypoint annotations
+            if let waypointAnnotation = annotation as? WaypointAnnotation {
+                markerView.markerTintColor = .purple
+                #if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "mappin")
+                #elseif os(macOS)
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "mappin", accessibilityDescription: "Waypoint")
+                } else {
+                    // Fallback for older macOS versions
+                    markerView.glyphText = "W"
+                }
+                #endif
+                
+                // Use custom glyph based on waypoint symbol if available
+                if let symbol = waypointAnnotation.waypoint.symbol {
+                    // Common GPX symbols can be mapped to SF Symbols
+                    let iconName: String
+                    switch symbol.lowercased() {
+                    case "flag", "summit":
+                        iconName = "flag"
+                    case "campground", "camp":
+                        iconName = "tent"
+                    case "water", "drinking-water":
+                        iconName = "drop"
+                    case "parking":
+                        iconName = "car"
+                    case "info", "information":
+                        iconName = "info.circle"
+                    case "danger", "caution":
+                        iconName = "exclamationmark.triangle"
+                    case "restaurant", "food":
+                        iconName = "fork.knife"
+                    default:
+                        iconName = "mappin"
+                    }
+                    
+                    #if os(iOS)
+                    markerView.glyphImage = UIImage(systemName: iconName)
+                    #elseif os(macOS)
+                    if #available(macOS 11.0, *) {
+                        markerView.glyphImage = NSImage(systemSymbolName: iconName, accessibilityDescription: symbol)
+                    }
+                    #endif
+                }
+                
+                // Set priority for waypoints (higher than elevation markers)
+                markerView.displayPriority = .defaultHigh
+            }
+            // Set appearance based on annotation type for track markers
+            else if annotation.title == "Start" {
                 markerView.markerTintColor = .green
                 #if os(iOS)
                 markerView.glyphImage = UIImage(systemName: "flag.fill")
