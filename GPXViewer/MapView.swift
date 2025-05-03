@@ -1102,7 +1102,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
     }
     
     // Perform a delayed zoom for initial load (iOS only)
-    #if os(iOS)
+#if os(iOS)
     func performDelayedZoom(mapView: MKMapView, locations: [CLLocation]) {
         // Cancel any existing timer
         delayedZoomTimer?.invalidate()
@@ -1141,7 +1141,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
             self.initialLoadLocations = nil
         }
     }
-    #endif
+#endif
     
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let polyline = overlay as? ElevationPolyline {
@@ -1158,129 +1158,221 @@ class Coordinator: NSObject, MKMapViewDelegate {
     }
     
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
-            guard !annotation.isKind(of: MKUserLocation.self) else { return nil }
-            
-            // Use a different identifier for waypoints
-            let identifier = annotation is WaypointAnnotation ? "WaypointPin" : "WorkoutPin"
-            var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-            
-            if annotationView == nil {
-                annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
-                annotationView?.canShowCallout = true
-            } else {
-                annotationView?.annotation = annotation
-            }
-            
-            if let markerView = annotationView as? MKMarkerAnnotationView {
-                // Handle waypoint annotations
-                if let waypointAnnotation = annotation as? WaypointAnnotation {
-                    markerView.markerTintColor = .purple
-                    #if os(iOS)
-                    markerView.glyphImage = UIImage(systemName: "mappin")
-                    // Add a button for copying coordinates
-                    let button = UIButton(type: .detailDisclosure)
-                    annotationView?.rightCalloutAccessoryView = button
-                    #elseif os(macOS)
-                    // Use SF Symbols on macOS 11+
-                    if #available(macOS 11.0, *) {
-                        markerView.glyphImage = NSImage(systemSymbolName: "mappin", accessibilityDescription: "Waypoint")
-                    } else {
-                        // Fallback for older macOS versions
-                        markerView.glyphText = "W"
-                    }
-                    // Add a button for copying coordinates on macOS
-                    let button = NSButton(title: "Copy", target: nil, action: nil)
-                    button.bezelStyle = .rounded
-                    annotationView?.rightCalloutAccessoryView = button
-                    #endif
-                    
-                    // Set subtitle with coordinates for all waypoints
-                    let coordinate = waypointAnnotation.coordinate
-                    let lat = String(format: "%.6f", coordinate.latitude)
-                    let lon = String(format: "%.6f", coordinate.longitude)
-                    waypointAnnotation._subtitle = "\(lat), \(lon)"
-                    
-                    // Use custom glyph based on waypoint symbol if available
-                    if let symbol = waypointAnnotation.waypoint.symbol {
-                        // Common GPX symbols can be mapped to SF Symbols
-                        let iconName: String
-                        switch symbol.lowercased() {
-                        case "flag", "summit":
-                            iconName = "flag"
-                        case "campground", "camp":
-                            iconName = "tent"
-                        case "water", "drinking-water":
-                            iconName = "drop"
-                        case "parking":
-                            iconName = "car"
-                        case "info", "information":
-                            iconName = "info.circle"
-                        case "danger", "caution":
-                            iconName = "exclamationmark.triangle"
-                        case "restaurant", "food":
-                            iconName = "fork.knife"
-                        default:
-                            iconName = "mappin"
-                        }
-                        
-                        #if os(iOS)
-                        markerView.glyphImage = UIImage(systemName: iconName)
-                        #elseif os(macOS)
-                        if #available(macOS 11.0, *) {
-                            markerView.glyphImage = NSImage(systemSymbolName: iconName, accessibilityDescription: symbol)
-                        }
-                        #endif
-                    }
-                    
-                    // Set priority for waypoints (higher than elevation markers)
-                    markerView.displayPriority = .defaultHigh
+        guard !annotation.isKind(of: MKUserLocation.self) else { return nil }
+        
+        // Use a different identifier for waypoints
+        let identifier = annotation is WaypointAnnotation ? "WaypointPin" : "WorkoutPin"
+        var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+        
+        if annotationView == nil {
+            annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+            annotationView?.canShowCallout = true
+        } else {
+            annotationView?.annotation = annotation
+        }
+        
+        if let markerView = annotationView as? MKMarkerAnnotationView {
+            // Handle waypoint annotations
+            if let waypointAnnotation = annotation as? WaypointAnnotation {
+                markerView.markerTintColor = .purple
+#if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "mappin")
+                // Add a button for copying coordinates
+                let button = UIButton(type: .custom)
+                button.setImage(UIImage(systemName: "doc.on.doc"), for: .normal)
+                button.frame = CGRect(x: 0, y: 0, width: 32, height: 32)
+                button.tintColor = UIColor.systemBlue
+                annotationView?.rightCalloutAccessoryView = button
+#elseif os(macOS)
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "mappin", accessibilityDescription: "Waypoint")
+                } else {
+                    // Fallback for older macOS versions
+                    markerView.glyphText = "W"
                 }
-                // Set appearance based on annotation type for track markers
-                else if annotation.title == "Start" {
-                    markerView.markerTintColor = .green
-                    #if os(iOS)
-                    markerView.glyphImage = UIImage(systemName: "flag.fill")
-                    #elseif os(macOS)
-                    // Use SF Symbols on macOS 11+
-                    if #available(macOS 11.0, *) {
-                        markerView.glyphImage = NSImage(systemSymbolName: "flag.fill", accessibilityDescription: "Start")
-                    } else {
-                        // Fallback for older macOS versions
-                        markerView.glyphText = "S"
+                // Add a button for copying coordinates on macOS
+                let button = NSButton(title: "Copy", target: nil, action: nil)
+                button.bezelStyle = .rounded
+                annotationView?.rightCalloutAccessoryView = button
+#endif
+                
+                // Set subtitle with coordinates for all waypoints
+                let coordinate = waypointAnnotation.coordinate
+                let lat = String(format: "%.6f", coordinate.latitude)
+                let lon = String(format: "%.6f", coordinate.longitude)
+                waypointAnnotation._subtitle = "\(lat), \(lon)"
+                
+                // Use custom glyph based on waypoint symbol if available
+                if let symbol = waypointAnnotation.waypoint.symbol {
+                    // Common GPX symbols can be mapped to SF Symbols
+                    let iconName: String
+                    switch symbol.lowercased() {
+                    case "flag", "summit":
+                        iconName = "flag"
+                    case "campground", "camp":
+                        iconName = "tent"
+                    case "water", "drinking-water":
+                        iconName = "drop"
+                    case "parking":
+                        iconName = "car"
+                    case "info", "information":
+                        iconName = "info.circle"
+                    case "danger", "caution":
+                        iconName = "exclamationmark.triangle"
+                    case "restaurant", "food":
+                        iconName = "fork.knife"
+                    default:
+                        iconName = "mappin"
                     }
-                    #endif
-                } else if annotation.title == "End" {
-                    markerView.markerTintColor = .red
-                    #if os(iOS)
-                    markerView.glyphImage = UIImage(systemName: "flag.checkered")
-                    #elseif os(macOS)
-                    // Use SF Symbols on macOS 11+
+                    
+#if os(iOS)
+                    markerView.glyphImage = UIImage(systemName: iconName)
+#elseif os(macOS)
                     if #available(macOS 11.0, *) {
-                        markerView.glyphImage = NSImage(systemSymbolName: "flag.checkered", accessibilityDescription: "End")
-                    } else {
-                        // Fallback for older macOS versions
-                        markerView.glyphText = "E"
+                        markerView.glyphImage = NSImage(systemSymbolName: iconName, accessibilityDescription: symbol)
                     }
-                    #endif
-                } else if annotation.title == "Peak" {
-                    markerView.markerTintColor = .orange
-                    #if os(iOS)
-                    markerView.glyphImage = UIImage(systemName: "arrow.up")
-                    #elseif os(macOS)
-                    markerView.glyphText = "▲"
-                    #endif
-                    markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
-                } else if annotation.title == "Valley" {
-                    markerView.markerTintColor = .blue
-                    #if os(iOS)
-                    markerView.glyphImage = UIImage(systemName: "arrow.down")
-                    #elseif os(macOS)
-                    markerView.glyphText = "▼"
-                    #endif
-                    markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
+#endif
                 }
+                
+                // Set priority for waypoints (higher than elevation markers)
+                markerView.displayPriority = .defaultHigh
             }
-            
-            return annotationView
-        }}
-
+            // Set appearance based on annotation type for track markers
+            else if annotation.title == "Start" {
+                markerView.markerTintColor = .green
+#if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "flag.fill")
+#elseif os(macOS)
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "flag.fill", accessibilityDescription: "Start")
+                } else {
+                    // Fallback for older macOS versions
+                    markerView.glyphText = "S"
+                }
+#endif
+            } else if annotation.title == "End" {
+                markerView.markerTintColor = .red
+#if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "flag.checkered")
+#elseif os(macOS)
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "flag.checkered", accessibilityDescription: "End")
+                } else {
+                    // Fallback for older macOS versions
+                    markerView.glyphText = "E"
+                }
+#endif
+            } else if annotation.title == "Peak" {
+                markerView.markerTintColor = .orange
+#if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "arrow.up")
+#elseif os(macOS)
+                markerView.glyphText = "▲"
+#endif
+                markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
+            } else if annotation.title == "Valley" {
+                markerView.markerTintColor = .blue
+#if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "arrow.down")
+#elseif os(macOS)
+                markerView.glyphText = "▼"
+#endif
+                markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
+            }
+        }
+        
+        return annotationView
+    }
+    
+#if os(iOS)
+// Handle the callout accessory control tap (copy coordinates button)
+func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
+    print("Copy button tapped in callout")
+    guard let annotation = view.annotation else {
+        print("No annotation found")
+        return
+    }
+    
+    // Format coordinates for clipboard
+    let coordinate = annotation.coordinate
+    let lat = String(format: "%.6f", coordinate.latitude)
+    let lon = String(format: "%.6f", coordinate.longitude)
+    let coordinateString = "\(lat), \(lon)"
+    
+    print("Copying coordinates: \(coordinateString)")
+    
+    // Copy to clipboard
+    UIPasteboard.general.string = coordinateString
+    
+    // Provide haptic feedback - this is reliable and doesn't require a view controller
+    let generator = UINotificationFeedbackGenerator()
+    generator.notificationOccurred(.success)
+    
+    // Try multiple methods to show visual feedback
+    print("Attempting to show feedback alert")
+    
+    // Method 1: Using the superview chain
+    if let viewController = view.superview?.findViewController() {
+        print("Found view controller via superview chain")
+        let alert = UIAlertController(
+            title: "Coordinates Copied",
+            message: "Location coordinates have been copied to clipboard",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        viewController.present(alert, animated: true)
+    }
+    // Method 2: Using the window's root view controller
+    else if let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
+            let rootVC = window.rootViewController {
+        print("Found root view controller via window")
+        let alert = UIAlertController(
+            title: "Coordinates Copied",
+            message: "Location coordinates have been copied to clipboard",
+            preferredStyle: .alert
+        )
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        
+        // Handle the case if root view controller is presenting something
+        var topVC = rootVC
+        while let presentedVC = topVC.presentedViewController {
+            topVC = presentedVC
+        }
+        
+        topVC.present(alert, animated: true)
+    } else {
+        print("Could not find a suitable view controller for showing alert")
+        // Just rely on haptic feedback in this case
+    }
+}
+#endif
+    
+#if os(macOS)
+// Handle the click for the copy button on macOS
+func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: NSControl) {
+    print("Copy button tapped in callout (macOS)")
+    guard let annotation = view.annotation else {
+        print("No annotation found")
+        return
+    }
+    
+    // Format coordinates for clipboard
+    let coordinate = annotation.coordinate
+    let lat = String(format: "%.6f", coordinate.latitude)
+    let lon = String(format: "%.6f", coordinate.longitude)
+    let coordinateString = "\(lat), \(lon)"
+    
+    print("Copying coordinates to macOS pasteboard: \(coordinateString)")
+    
+    // Copy to clipboard
+    NSPasteboard.general.clearContents()
+    NSPasteboard.general.setString(coordinateString, forType: .string)
+    
+    // Show feedback (could be expanded to use NSPopover or similar)
+    print("Successfully copied coordinates to clipboard")
+}
+#endif
+}
