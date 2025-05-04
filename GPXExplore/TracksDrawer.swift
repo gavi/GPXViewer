@@ -105,7 +105,9 @@ struct TracksDrawer: View {
                             },
                             onToggleVisibility: {
                                 toggleTrackSegments(trackIndex: trackIndex)
-                            }
+                            },
+                            visibleSegments: $visibleSegments,
+                            segments: $segments
                         )
                         
                         // Segment rows (only show if track is expanded)
@@ -198,6 +200,14 @@ struct TrackRow: View {
     let onSelect: () -> Void
     let onToggle: () -> Void
     let onToggleVisibility: () -> Void
+    @Binding var visibleSegments: [Bool]
+    @Binding var segments: [GPXTrackSegment]
+    
+    // Check if all segments in this track are hidden
+    private var areAllSegmentsHidden: Bool {
+        let trackSegmentIndices = segments.indices.filter { segments[$0].trackIndex == trackIndex }
+        return trackSegmentIndices.allSatisfy { !visibleSegments[$0] }
+    }
     
     var body: some View {
         HStack(spacing: 8) {
@@ -215,12 +225,12 @@ struct TrackRow: View {
             
             // Visibility toggle for all segments in track
             Button(action: onToggleVisibility) {
-                Image(systemName: "eye")
+                Image(systemName: areAllSegmentsHidden ? "eye.slash" : "eye")
                     .frame(width: 20, height: 20)
                     #if os(iOS)
-                    .foregroundColor(Color(UIColor.systemBlue))
+                    .foregroundColor(areAllSegmentsHidden ? Color(UIColor.systemGray) : Color(UIColor.systemBlue))
                     #else
-                    .foregroundColor(Color.accentColor)
+                    .foregroundColor(areAllSegmentsHidden ? Color.gray : Color.accentColor)
                     #endif
             }
             .buttonStyle(BorderlessButtonStyle())
@@ -496,12 +506,23 @@ extension TracksDrawer {
 }
 
 #Preview {
+    let mockSegments = [
+        GPXTrackSegment(locations: [CLLocation(latitude: 0, longitude: 0)], trackIndex: 0),
+        GPXTrackSegment(locations: [CLLocation(latitude: 1, longitude: 1)], trackIndex: 0)
+    ]
+    
+    // Create a document with some sample XML data
+    let doc = GPXExploreDocument(text: "<gpx></gpx>")
+    
+    // Since we can't directly modify the properties, we're just using the
+    // document as is and providing the segments separately
+    
     TracksDrawer(
         isOpen: .constant(true),
-        document: .constant(GPXExploreDocument()),
-        visibleSegments: .constant([true, false, true]),
+        document: .constant(doc),
+        visibleSegments: .constant([true, false]),
         selectedTrackIndex: .constant(0),
-        segments: .constant([]),
+        segments: .constant(mockSegments),
         waypointsVisible: .constant(true)
     )
     .environmentObject(SettingsModel())

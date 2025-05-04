@@ -35,9 +35,6 @@ struct GPXExploreApp: App {
         }
         if #available(iOS 18, *) {
             DocumentGroupLaunchScene {
-                HStack{
-                    Image(systemName: "mappin")
-                }
                 
             }
             background: {

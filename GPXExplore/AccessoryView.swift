@@ -15,15 +15,15 @@ struct AccessoryView: View {
         ZStack {
             Image(.a1)
                 .resizable()
-                .offset(x: size.width / 2 - 450, y: size.height / 2 - 300)
+                .offset(x: size.width / 2 - 420, y: size.height / 2 - 400)
                 .scaledToFit()
-                .frame(width: 200)
+                .frame(width: 150)
                 .opacity(horizontal == .compact ? 0 : 1)
             Image(.b1)
                 .resizable()
-                .offset(x: size.width / 2 + 250, y: size.height / 2 - 250)
+                .offset(x: size.width / 2 + 250, y: size.height / 2 - 400)
                 .scaledToFit()
-                .frame(width: 200)
+                .frame(width: 150)
                 .opacity(horizontal == .compact ? 0 : 1)
         }
         .onGeometryChange(for: CGSize.self) { proxy in
