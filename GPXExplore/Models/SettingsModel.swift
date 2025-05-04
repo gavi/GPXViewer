@@ -39,6 +39,23 @@ enum MapStyle: String, CaseIterable, Identifiable {
     }
 }
 
+// Elevation visualization modes
+enum ElevationVisualizationMode: String, CaseIterable, Identifiable {
+    case effort = "Effort" // Original visualization based on effort (combining grade and distance)
+    case gradient = "Gradient" // Pure elevation gradient visualization
+    
+    var id: String { self.rawValue }
+    
+    var description: String {
+        switch self {
+        case .effort:
+            return "Colors based on combined effort (grade and distance)"
+        case .gradient:
+            return "Colors based purely on elevation gradient"
+        }
+    }
+}
+
 class SettingsModel: ObservableObject {
     @Published var useMetricSystem: Bool {
         didSet {
@@ -52,6 +69,12 @@ class SettingsModel: ObservableObject {
         }
     }
     
+    @Published var elevationVisualizationMode: ElevationVisualizationMode {
+        didSet {
+            UserDefaults.standard.set(elevationVisualizationMode.rawValue, forKey: "elevationVisualizationMode")
+        }
+    }
+    
     init() {
         self.useMetricSystem = UserDefaults.standard.bool(forKey: "useMetricSystem", defaultValue: true)
         
@@ -60,6 +83,13 @@ class SettingsModel: ObservableObject {
             self.mapStyle = style
         } else {
             self.mapStyle = .standard
+        }
+        
+        if let savedVisualizationMode = UserDefaults.standard.string(forKey: "elevationVisualizationMode"),
+           let mode = ElevationVisualizationMode(rawValue: savedVisualizationMode) {
+            self.elevationVisualizationMode = mode
+        } else {
+            self.elevationVisualizationMode = .effort
         }
     }
     

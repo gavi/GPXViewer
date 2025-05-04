@@ -168,7 +168,7 @@ class ElevationPolyline: MKPolyline {
     }
 }
 
-// Custom renderer for gradient polylines
+// Original effort-based gradient polyline renderer
 class GradientPolylineRenderer: MKPolylineRenderer {
     var elevationPolyline: ElevationPolyline?
     var callCounter: Int = 0
@@ -273,32 +273,8 @@ class GradientPolylineRenderer: MKPolylineRenderer {
                     //print("Segment \(i): Horizontal distance too small (\(horizontalDistance)m), using grade=0")
                 }
                 
-                // Get color based on grade rather than absolute elevation
-                // Use actual grade for coloring
-                let debugForcedGradient = false
-                var colorGrade = grade
-                
-                if debugForcedGradient {
-                    // Force different colors by varying grades artificially based on location
-                    let cycle = Double(i % 5)
-                    if cycle < 1 {
-                        colorGrade = 0.03  // slight uphill - yellow-green
-                    } else if cycle < 2 {
-                        colorGrade = 0.09  // moderate uphill - orange
-                    } else if cycle < 3 {
-                        colorGrade = 0.18  // steep uphill - red
-                    } else if cycle < 4 {
-                        colorGrade = -0.03 // slight downhill - light blue
-                    } else {
-                        colorGrade = -0.09 // moderate downhill - medium blue
-                    }
-                    // Print every 10th segment for debugging
-                    if i % 10 == 0 {
-                        print("DEBUG FORCED GRADIENT: Segment \(i) forced grade \(colorGrade)")
-                    }
-                }
-                
-                let color = colorForGrade(colorGrade)
+                // Apply color for this grade
+                let color = colorForGrade(grade)
                 
                 // Set stroke color for this segment
                 ctx.setStrokeColor(color.cgColor)
@@ -406,6 +382,199 @@ class GradientPolylineRenderer: MKPolylineRenderer {
             } else {
                 // Very steep downhill: purple
                 return PlatformColor(red: 0.4, green: 0.2, blue: 0.8, alpha: 1.0)
+            }
+        }
+    }
+}
+
+// New pure elevation gradient polyline renderer
+class ElevationGradientPolylineRenderer: MKPolylineRenderer {
+    var elevationPolyline: ElevationPolyline?
+    var callCounter: Int = 0
+    
+    // Constants for color range
+    private let minSignificantValue: Double = 0.05  // 5% of range - slight color change
+    private let moderateValue: Double = 0.3        // 30% of range - moderate color change
+    private let strongValue: Double = 0.6          // 60% of range - strong color change
+    private let extremeValue: Double = 0.85        // 85% of range - extreme color change
+    
+    override func draw(_ mapRect: MKMapRect, zoomScale: MKZoomScale, in ctx: CGContext) {
+        guard let elevationPolyline = elevationPolyline else {
+            super.draw(mapRect, zoomScale: zoomScale, in: ctx)
+            return
+        }
+
+        // Start by getting the polyline's points in map coordinates
+        let points = polyline.points()
+        let pointCount = polyline.pointCount
+        
+        // We need at least 2 points to draw a line
+        if pointCount < 2 {
+            super.draw(mapRect, zoomScale: zoomScale, in: ctx)
+            return
+        }
+        
+        // Calculate line width with zoom adjustments
+        let zoomAdjustedLineWidth = lineWidth / sqrt(zoomScale)
+        let zoomBoostFactor = max(1.0, 0.2 / (zoomScale + 0.02))
+        let actualLineWidth = min(zoomAdjustedLineWidth * zoomBoostFactor, lineWidth * 25)
+        
+        // Set up the context for drawing
+        ctx.saveGState()
+        ctx.setLineWidth(actualLineWidth)
+        ctx.setLineCap(.round)
+        ctx.setLineJoin(.round)
+        ctx.setShouldAntialias(true)
+        ctx.setAllowsAntialiasing(true)
+        
+        // Draw each segment with its corresponding color
+        for i in 0..<(pointCount-1) {
+            // Get map points for the segment
+            let pointA = points[i]
+            let pointB = points[i+1]
+            
+            // Convert to points in the renderer's coordinate system
+            let pixelPointA = point(for: MKMapPoint(x: pointA.x, y: pointA.y))
+            let pixelPointB = point(for: MKMapPoint(x: pointB.x, y: pointB.y))
+            
+            // Check if this segment is visible in the current map rect
+            let segmentRect = MKMapRect(x: min(pointA.x, pointB.x),
+                                       y: min(pointA.y, pointB.y),
+                                       width: abs(pointB.x - pointA.x),
+                                       height: abs(pointB.y - pointA.y))
+            
+            // Only draw if segment is visible
+            if mapRect.intersects(segmentRect) {
+                // Prevent out of bounds access
+                let indexA = min(i, elevationPolyline.elevations.count - 1)
+                
+                // Get current elevation
+                let elevation = elevationPolyline.elevations[indexA]
+                
+                // Calculate normalized elevation (0 to 1 scale)
+                var normalizedElevation = 0.5 // Default to middle (gray) if no elevation range
+                
+                if elevationPolyline.maxElevation > elevationPolyline.minElevation {
+                    normalizedElevation = (elevation - elevationPolyline.minElevation) / 
+                                         (elevationPolyline.maxElevation - elevationPolyline.minElevation)
+                }
+                
+                // Get color based on normalized elevation
+                let color = colorForNormalizedElevation(normalizedElevation)
+                
+                // Set stroke color for this segment
+                ctx.setStrokeColor(color.cgColor)
+                
+                // Draw the segment
+                ctx.beginPath()
+                ctx.move(to: pixelPointA)
+                ctx.addLine(to: pixelPointB)
+                ctx.strokePath()
+            }
+        }
+        
+        ctx.restoreGState()
+    }
+    
+    // Get color based on normalized elevation (0-1 scale)
+    private func colorForNormalizedElevation(_ value: Double) -> PlatformColor {
+        // Ensure value is in 0-1 range
+        let clampedValue = min(max(value, 0.0), 1.0)
+        
+        // Only log every 10th call to avoid console flood
+        var callCounter = self.callCounter
+        callCounter += 1
+        if callCounter % 20 == 0 {
+            //print("colorForNormalizedElevation call #\(callCounter): input: \(value), clamped: \(clampedValue)")
+        }
+        self.callCounter = callCounter
+        
+        // Color scheme for elevation:
+        // Low: Deep blue -> Medium blue -> Light blue
+        // Middle: Green/Yellow
+        // High: Yellow -> Orange -> Red
+        
+        if clampedValue < 0.5 {
+            // Lower half of elevation range (0.0-0.5 mapped to 0.0-1.0)
+            let scaledValue = clampedValue * 2 // Scale to 0-1 range
+            
+            if scaledValue < minSignificantValue {
+                // Deepest blue - lowest elevation
+                return PlatformColor(
+                    red: 0.0,
+                    green: 0.0,
+                    blue: 0.8,
+                    alpha: 1.0
+                )
+            } else if scaledValue < moderateValue {
+                // Medium blue
+                return PlatformColor(
+                    red: 0.0,
+                    green: 0.3,
+                    blue: 0.9,
+                    alpha: 1.0
+                )
+            } else if scaledValue < strongValue {
+                // Light blue
+                return PlatformColor(
+                    red: 0.0,
+                    green: 0.6,
+                    blue: 1.0,
+                    alpha: 1.0
+                )
+            } else {
+                // Cyan - approaching middle elevation
+                return PlatformColor(
+                    red: 0.0,
+                    green: 0.8,
+                    blue: 0.8,
+                    alpha: 1.0
+                )
+            }
+        } else {
+            // Upper half of elevation range (0.5-1.0 mapped to 0.0-1.0)
+            let scaledValue = (clampedValue - 0.5) * 2 // Scale to 0-1 range
+            
+            if scaledValue < minSignificantValue {
+                // Green - just above middle elevation
+                return PlatformColor(
+                    red: 0.1,
+                    green: 0.8,
+                    blue: 0.1,
+                    alpha: 1.0
+                )
+            } else if scaledValue < moderateValue {
+                // Yellow-green
+                return PlatformColor(
+                    red: 0.6,
+                    green: 0.8,
+                    blue: 0.0,
+                    alpha: 1.0
+                )
+            } else if scaledValue < strongValue {
+                // Yellow/orange
+                return PlatformColor(
+                    red: 1.0,
+                    green: 0.6,
+                    blue: 0.0,
+                    alpha: 1.0
+                )
+            } else if scaledValue < extremeValue {
+                // Orange/red - high elevation
+                return PlatformColor(
+                    red: 1.0,
+                    green: 0.3,
+                    blue: 0.0,
+                    alpha: 1.0
+                )
+            } else {
+                // Bright red - highest elevation
+                return PlatformColor(
+                    red: 1.0,
+                    green: 0.0,
+                    blue: 0.0,
+                    alpha: 1.0
+                )
             }
         }
     }
@@ -1084,14 +1253,32 @@ class Coordinator: NSObject, MKMapViewDelegate {
     
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let polyline = overlay as? ElevationPolyline {
-            // Create a custom gradient polyline renderer
-            let gradientRenderer = GradientPolylineRenderer(polyline: polyline)
+            // Get settings from the MapView through the coordinator
+            guard let modeString = UserDefaults.standard.string(forKey: "elevationVisualizationMode"),
+                  let mode = ElevationVisualizationMode(rawValue: modeString) else {
+                // Default to effort if setting not found
+                let gradientRenderer = GradientPolylineRenderer(polyline: polyline)
+                gradientRenderer.elevationPolyline = polyline
+                gradientRenderer.lineWidth = 12  // Increased line width for better visibility
+                return gradientRenderer
+            }
             
-            // Configure it to use our elevation data
-            gradientRenderer.elevationPolyline = polyline
-            gradientRenderer.lineWidth = 12  // Increased line width for better visibility
-            
-            return gradientRenderer
+            // Select renderer based on the visualization mode
+            switch mode {
+            case .effort:
+                // Create original effort-based gradient polyline renderer
+                let gradientRenderer = GradientPolylineRenderer(polyline: polyline)
+                gradientRenderer.elevationPolyline = polyline
+                gradientRenderer.lineWidth = 12  // Increased line width for better visibility
+                return gradientRenderer
+                
+            case .gradient:
+                // Create pure elevation gradient polyline renderer
+                let elevationRenderer = ElevationGradientPolylineRenderer(polyline: polyline)
+                elevationRenderer.elevationPolyline = polyline
+                elevationRenderer.lineWidth = 12  // Increased line width for better visibility
+                return elevationRenderer
+            }
         }
         return MKOverlayRenderer(overlay: overlay)
     }

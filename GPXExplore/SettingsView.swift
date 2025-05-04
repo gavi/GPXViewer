@@ -25,6 +25,20 @@ struct SettingsView: View {
                 }
                 .pickerStyle(SegmentedPickerStyle())
             }
+            
+            Section(header: Text("Elevation Visualization")) {
+                Picker("Visualization Mode", selection: $settings.elevationVisualizationMode) {
+                    ForEach(ElevationVisualizationMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(SegmentedPickerStyle())
+                
+                Text(settings.elevationVisualizationMode.description)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
+            }
         }
         .navigationTitle("Settings")
     }
