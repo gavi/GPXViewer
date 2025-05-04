@@ -112,24 +112,24 @@ struct TracksDrawer: View {
                         
                         // Segment rows (only show if track is expanded)
                         if isExpanded {
-                            ForEach(0..<segments.count, id: \.self) { segmentIndex in
-                                if segments[segmentIndex].trackIndex == trackIndex {
-                                    let segment = segments[segmentIndex]
-                                    let pointCount = segment.locations.count
-                                    
-                                    if pointCount > 0 {
-                                        SegmentRow(
-                                            segment: segment,
-                                            segmentIndex: segmentIndex,
-                                            isVisible: visibleSegments.indices.contains(segmentIndex) ? visibleSegments[segmentIndex] : true,
-                                            onToggleVisibility: {
-                                                if visibleSegments.indices.contains(segmentIndex) {
-                                                    visibleSegments[segmentIndex].toggle()
-                                                }
-                                            },
-                                            distanceFormatter: settings.formatDistance
-                                        )
-                                    }
+                            let trackSegmentIndices = segments.indices.filter { segments[$0].trackIndex == trackIndex }
+                            ForEach(Array(trackSegmentIndices.enumerated()), id: \.element) { (localIndex, segmentIndex) in
+                                let segment = segments[segmentIndex]
+                                let pointCount = segment.locations.count
+                                
+                                if pointCount > 0 {
+                                    SegmentRow(
+                                        segment: segment,
+                                        segmentIndex: segmentIndex,
+                                        localSegmentIndex: localIndex, // Pass the local segment index
+                                        isVisible: visibleSegments.indices.contains(segmentIndex) ? visibleSegments[segmentIndex] : true,
+                                        onToggleVisibility: {
+                                            if visibleSegments.indices.contains(segmentIndex) {
+                                                visibleSegments[segmentIndex].toggle()
+                                            }
+                                        },
+                                        distanceFormatter: settings.formatDistance
+                                    )
                                 }
                             }
                         }
@@ -271,6 +271,7 @@ struct TrackRow: View {
 struct SegmentRow: View {
     let segment: GPXTrackSegment
     let segmentIndex: Int
+    let localSegmentIndex: Int // Track-specific segment index (starting from 0 for each track)
     let isVisible: Bool
     let onToggleVisibility: () -> Void
     let distanceFormatter: (Double) -> String
@@ -307,7 +308,7 @@ struct SegmentRow: View {
             
             // Segment info
             VStack(alignment: .leading, spacing: 2) {
-                Text("Segment \(segmentIndex + 1)")
+                Text("Segment \(localSegmentIndex + 1)")
                     .font(.system(size: 13))
                 
                 HStack(spacing: 8) {
@@ -508,11 +509,19 @@ extension TracksDrawer {
 #Preview {
     let mockSegments = [
         GPXTrackSegment(locations: [CLLocation(latitude: 0, longitude: 0)], trackIndex: 0),
-        GPXTrackSegment(locations: [CLLocation(latitude: 1, longitude: 1)], trackIndex: 0)
+        GPXTrackSegment(locations: [CLLocation(latitude: 1, longitude: 1)], trackIndex: 0),
+        GPXTrackSegment(locations: [CLLocation(latitude: 2, longitude: 2)], trackIndex: 1)
     ]
     
     // Create a document with some sample XML data
-    let doc = GPXExploreDocument(text: "<gpx></gpx>")
+    let mockDoc = GPXExploreDocument(text: "<gpx></gpx>")
+    
+    // Create a mock document with tracks for preview
+    var doc = mockDoc
+    let mockTracks = [
+        GPXTrack(name: "Track 1", type: "running", date: Date(), segments: []),
+        GPXTrack(name: "Track 2", type: "cycling", date: Date(), segments: [])
+    ]
     
     // Since we can't directly modify the properties, we're just using the
     // document as is and providing the segments separately
@@ -520,7 +529,7 @@ extension TracksDrawer {
     TracksDrawer(
         isOpen: .constant(true),
         document: .constant(doc),
-        visibleSegments: .constant([true, false]),
+        visibleSegments: .constant([true, false, true]),
         selectedTrackIndex: .constant(0),
         segments: .constant(mockSegments),
         waypointsVisible: .constant(true)
