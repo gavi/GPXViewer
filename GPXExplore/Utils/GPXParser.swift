@@ -1,6 +1,5 @@
 import Foundation
 import CoreLocation
-import HealthKit
 
 // Represents a track segment with location points
 struct GPXTrackSegment: Equatable {
@@ -39,36 +38,31 @@ struct GPXTrack {
         return segments.flatMap { $0.locations }
     }
     
-    var workoutType: HKWorkoutActivityType {
+    var activityType: String {
         // Check filename first for simulator samples
         let lowercaseName = name.lowercased()
         if lowercaseName.contains("run") || lowercaseName.contains("running") {
-            return .running
+            return "running"
         } else if lowercaseName.contains("bike") || lowercaseName.contains("cycling") {
-            return .cycling
+            return "cycling"
         } else if lowercaseName.contains("hike") || lowercaseName.contains("hiking") {
-            return .hiking
+            return "hiking"
         }
         
         // Then check type field
         switch type.lowercased() {
         case "running":
-            return .running
+            return "running"
         case "cycling":
-            return .cycling
+            return "cycling"
         case "hiking":
-            return .hiking
+            return "hiking"
         default:
-            // Default to running for simulator testing
-            #if targetEnvironment(simulator)
-                return .running
-            #else
-                return .other
-            #endif
+            return "other"
         }
     }
     
-    var workout: HKWorkout {
+    var workout: GPXWorkout {
         // Create a workout representation for the GPX track
         // Use sorted locations to ensure start and end dates are correct
         let allLocations = self.allLocations
@@ -93,15 +87,12 @@ struct GPXTrack {
             }
         }
         
-        let totalDistanceQuantity = HKQuantity(unit: .meter(), doubleValue: totalDistanceMeters)
-        
-        return HKWorkout(
-            activityType: workoutType,
-            start: startDate,
-            end: endDate,
+        return GPXWorkout(
+            activityType: activityType,
+            startDate: startDate,
+            endDate: endDate,
             duration: endDate.timeIntervalSince(startDate),
-            totalEnergyBurned: nil,
-            totalDistance: totalDistanceQuantity,
+            totalDistance: totalDistanceMeters,
             metadata: [
                 "name": name,
                 "source": "GPX Sample"

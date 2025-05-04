@@ -2,6 +2,16 @@ import Foundation
 import SwiftUI
 import MapKit
 
+// Custom model to replace HKWorkout
+struct GPXWorkout {
+    let activityType: String
+    let startDate: Date
+    let endDate: Date
+    let duration: TimeInterval
+    let totalDistance: Double // in meters
+    let metadata: [String: Any]
+}
+
 enum MapStyle: String, CaseIterable, Identifiable {
     case standard = "Standard"
     case satellite = "Satellite"

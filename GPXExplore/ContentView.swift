@@ -6,6 +6,7 @@ struct ContentView: View {
     @Binding var document: GPXExploreDocument
     @StateObject private var settings = SettingsModel()
     @State private var isTracksDrawerOpen = false
+    @State private var isSettingsPresented = false
     @State private var visibleSegments: [Bool] = []
     @State private var selectedTrackIndex: Int = 0
     @State private var segments: [GPXTrackSegment] = []
@@ -35,6 +36,42 @@ struct ContentView: View {
             return document.tracks.first
         }
     }
+    
+    // Create a workout based on visible segments
+    private func createWorkoutFromSegments(_ segments: [GPXTrackSegment], originalTrack: GPXTrack) -> GPXWorkout {
+        // Combine all locations from visible segments
+        let allLocations = segments.flatMap { $0.locations }
+        
+        // If no visible segments, return the original workout
+        if allLocations.isEmpty {
+            return originalTrack.workout
+        }
+        
+        // Sort locations by timestamp to get accurate start/end times
+        let sortedLocations = allLocations.sorted { $0.timestamp < $1.timestamp }
+        
+        // Extract start and end dates from visible locations
+        let startDate = sortedLocations.first?.timestamp ?? originalTrack.workout.startDate
+        let endDate = sortedLocations.last?.timestamp ?? originalTrack.workout.endDate
+        
+        // Calculate total distance from visible segments
+        var totalDistanceMeters: Double = 0
+        if allLocations.count > 1 {
+            for i in 0..<(allLocations.count - 1) {
+                totalDistanceMeters += allLocations[i].distance(from: allLocations[i+1])
+            }
+        }
+        
+        // Create a new workout with data just from visible segments
+        return GPXWorkout(
+            activityType: originalTrack.activityType,
+            startDate: startDate,
+            endDate: endDate,
+            duration: endDate.timeIntervalSince(startDate),
+            totalDistance: totalDistanceMeters,
+            metadata: originalTrack.workout.metadata
+        )
+    }
 
     var body: some View {
         ZStack {
@@ -62,7 +99,9 @@ struct ContentView: View {
                         
                         // Overlay with route information
                         if let track = selectedTrack {
-                            RouteInfoOverlay(trackSegments: visibleTrackSegments, workout: track.workout)
+                            // Create a workout based only on visible segments
+                            let visibleWorkout = createWorkoutFromSegments(visibleTrackSegments, originalTrack: track)
+                            RouteInfoOverlay(trackSegments: visibleTrackSegments, workout: visibleWorkout)
                                 .environmentObject(settings)
                         }
                     }
@@ -80,9 +119,31 @@ struct ContentView: View {
                             .pickerStyle(.menu)
                         }
                         
+                        // Settings button
+                        ToolbarItem(placement: .automatic) {
+                            Button(action: {
+                                isSettingsPresented = true
+                            }) {
+                                Label("Settings", systemImage: "gear")
+                            }
+                        }
+                        
                         // Tracks drawer toggle
                         ToolbarItem(placement: .automatic) {
                             TracksDrawer.toolbarButton(isOpen: $isTracksDrawerOpen)
+                        }
+                    }
+                    .sheet(isPresented: $isSettingsPresented) {
+                        NavigationStack {
+                            SettingsView()
+                                .environmentObject(settings)
+                                .toolbar {
+                                    ToolbarItem(placement: .confirmationAction) {
+                                        Button("Done") {
+                                            isSettingsPresented = false
+                                        }
+                                    }
+                                }
                         }
                     }
                     

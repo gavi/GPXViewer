@@ -1,15 +1,14 @@
 import SwiftUI
 import CoreLocation
-import HealthKit
 
 struct RouteInfoOverlay: View {
     let trackSegments: [GPXTrackSegment]
-    let workout: HKWorkout
+    let workout: GPXWorkout
     @EnvironmentObject var settings: SettingsModel
     
     // Get track name from workout metadata
     private var trackName: String {
-        return workout.metadata?["name"] as? String ?? "Unnamed Track"
+        return workout.metadata["name"] as? String ?? "Unnamed Track"
     }
     
     var body: some View {
@@ -40,10 +39,8 @@ struct RouteInfoOverlay: View {
                     
                     Spacer()
                     
-                    if let distance = workout.totalDistance?.doubleValue(for: .meter()) {
-                        Text(settings.formatDistance(distance))
-                            .font(.headline)
-                    }
+                    Text(settings.formatDistance(workout.totalDistance))
+                        .font(.headline)
                 }
                 
                 // Add elevation data
