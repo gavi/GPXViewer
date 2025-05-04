@@ -1,10 +1,3 @@
-//
-//  ContentView.swift
-//  GPXExplore
-//
-//  Created by Gavi Narra on 4/29/25.
-//
-
 import SwiftUI
 import MapKit
 import CoreLocation
@@ -73,6 +66,25 @@ struct ContentView: View {
                                 .environmentObject(settings)
                         }
                     }
+                    #if os(iOS) || os(visionOS)
+                    .toolbar(.visible, for: .navigationBar)
+                    #endif
+                    .toolbar {
+                        // Map style picker
+                        ToolbarItem(placement: .automatic) {
+                            Picker("Map Style", selection: $settings.mapStyle) {
+                                ForEach(MapStyle.allCases) { style in
+                                    Text(style.rawValue).tag(style)
+                                }
+                            }
+                            .pickerStyle(.menu)
+                        }
+                        
+                        // Tracks drawer toggle
+                        ToolbarItem(placement: .automatic) {
+                            TracksDrawer.toolbarButton(isOpen: $isTracksDrawerOpen)
+                        }
+                    }
                     
                     // Tracks drawer on the right (only shown when open)
                     if isTracksDrawerOpen {
@@ -97,22 +109,6 @@ struct ContentView: View {
                     Text("Open a GPX file to view the track on the map")
                         .foregroundColor(.secondary)
                 }
-            }
-        }
-        .toolbar {
-            // Map style picker
-            ToolbarItem(placement: .automatic) {
-                Picker("Map Style", selection: $settings.mapStyle) {
-                    ForEach(MapStyle.allCases) { style in
-                        Text(style.rawValue).tag(style)
-                    }
-                }
-                .pickerStyle(.menu)
-            }
-            
-            // Tracks drawer toggle
-            ToolbarItem(placement: .automatic) {
-                TracksDrawer.toolbarButton(isOpen: $isTracksDrawerOpen)
             }
         }
     }

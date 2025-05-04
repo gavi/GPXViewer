@@ -25,11 +25,31 @@ struct GPXExploreApp: App {
     var body: some Scene {
         #if os(iOS)
         DocumentGroup(viewing: GPXExploreDocument.self) { file in
-            ContentView(document: file.$document)
-                .onAppear {
-                    setupNotificationObserver()
-                }
+            NavigationStack {
+                
+                ContentView(document: file.$document)
+                    .onAppear {
+                        setupNotificationObserver()
+                    }
+            }
         }
+        if #available(iOS 18, *) {
+            DocumentGroupLaunchScene {
+                HStack{
+                    Image(systemName: "mappin")
+                }
+                
+            }
+            background: {
+                Image(.gmBg)
+                    .resizable()
+                    .scaledToFill()
+                    .ignoresSafeArea()
+            }overlayAccessoryView: { _ in
+                AccessoryView()
+            }
+        }
+        
         #else
         DocumentGroup(viewing: GPXExploreDocument.self) { file in
             ContentView(document: file.$document)
