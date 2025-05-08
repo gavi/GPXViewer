@@ -196,13 +196,12 @@ class GradientPolylineRenderer: MKPolylineRenderer {
         }
         
         // Calculate line width with zoom adjustments
-        let zoomAdjustedLineWidth = lineWidth / sqrt(zoomScale)
-        let zoomBoostFactor = max(1.0, 0.2 / (zoomScale + 0.02))
-        let actualLineWidth = min(zoomAdjustedLineWidth * zoomBoostFactor, lineWidth * 25)
-        
+        let baseLineWidth = self.lineWidth // Use the lineWidth property set from outside
+        let adjustedLineWidth = baseLineWidth / zoomScale
+
         // Set up the context for drawing
         ctx.saveGState()
-        ctx.setLineWidth(actualLineWidth)
+        ctx.setLineWidth(adjustedLineWidth)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         ctx.setShouldAntialias(true)
@@ -415,13 +414,12 @@ class ElevationGradientPolylineRenderer: MKPolylineRenderer {
         }
         
         // Calculate line width with zoom adjustments
-        let zoomAdjustedLineWidth = lineWidth / sqrt(zoomScale)
-        let zoomBoostFactor = max(1.0, 0.2 / (zoomScale + 0.02))
-        let actualLineWidth = min(zoomAdjustedLineWidth * zoomBoostFactor, lineWidth * 25)
-        
+        let baseLineWidth = self.lineWidth // Use the lineWidth property set from outside
+        let adjustedLineWidth = baseLineWidth / zoomScale
+
         // Set up the context for drawing
         ctx.saveGState()
-        ctx.setLineWidth(actualLineWidth)
+        ctx.setLineWidth(adjustedLineWidth)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
         ctx.setShouldAntialias(true)
@@ -1434,7 +1432,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 // Default to effort if setting not found
                 let gradientRenderer = GradientPolylineRenderer(polyline: polyline)
                 gradientRenderer.elevationPolyline = polyline
-                gradientRenderer.lineWidth = 12  // Increased line width for better visibility
+                gradientRenderer.lineWidth = 4  // Increased line width for better visibility
                 return gradientRenderer
             }
             
@@ -1444,14 +1442,14 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 // Create original effort-based gradient polyline renderer
                 let gradientRenderer = GradientPolylineRenderer(polyline: polyline)
                 gradientRenderer.elevationPolyline = polyline
-                gradientRenderer.lineWidth = 12  // Increased line width for better visibility
+                gradientRenderer.lineWidth = 4  // Increased line width for better visibility
                 return gradientRenderer
                 
             case .gradient:
                 // Create pure elevation gradient polyline renderer
                 let elevationRenderer = ElevationGradientPolylineRenderer(polyline: polyline)
                 elevationRenderer.elevationPolyline = polyline
-                elevationRenderer.lineWidth = 12  // Increased line width for better visibility
+                elevationRenderer.lineWidth = 4  // Increased line width for better visibility
                 return elevationRenderer
             }
         }
