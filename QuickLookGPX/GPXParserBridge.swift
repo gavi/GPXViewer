@@ -136,6 +136,8 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
     private var isTrack = false
     private var isTrackSegment = false
     private var isTrackPoint = false
+    private var isRoute = false
+    private var isRoutePoint = false
     private var isMetadata = false
     private var isWaypoint = false
     
@@ -148,6 +150,9 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
     // Store segments for the current track
     private var currentSegmentPoints: [CLLocation] = []
     private var currentTrackSegments: [GPXTrackSegment] = []
+    
+    // Store points for the current route
+    private var currentRoutePoints: [CLLocation] = []
     
     // Store all completed tracks and waypoints
     private var completedTracks: [GPXTrack] = []
@@ -191,6 +196,30 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
         }
     }
     
+    // Finalize the current route if it has any points by converting it to a track
+    private func finalizeCurrentRouteIfNeeded() {
+        if !currentRoutePoints.isEmpty {
+            let currentTrackIndex = completedTracks.count
+            
+            // Create a single segment from all route points
+            let segment = GPXTrackSegment(locations: currentRoutePoints, trackIndex: currentTrackIndex)
+            
+            let track = GPXTrack(
+                name: currentTrackName.isEmpty ? "Route \(currentTrackIndex + 1)" : currentTrackName,
+                type: "route",
+                date: currentTrackDate.timeIntervalSince1970 > 0 ? currentTrackDate : gpxMetadataDate,
+                segments: [segment]
+            )
+            completedTracks.append(track)
+            
+            // Reset current route data
+            currentTrackName = ""
+            currentTrackType = ""
+            currentTrackDate = Date()
+            currentRoutePoints = []
+        }
+    }
+    
     func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?, qualifiedName qName: String?, attributes attributeDict: [String : String] = [:]) {
         currentElement = elementName
         
@@ -206,12 +235,27 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
             currentTrackType = ""
             currentTrackDate = Date()
             
+        case "rte":
+            finalizeCurrentRouteIfNeeded()
+            isRoute = true
+            currentRoutePoints = []
+            currentTrackName = ""
+            currentTrackType = ""
+            currentTrackDate = Date()
+            
         case "trkseg":
             isTrackSegment = true
             currentSegmentPoints = []
             
         case "trkpt":
             isTrackPoint = true
+            currentLat = Double(attributeDict["lat"] ?? "0")
+            currentLon = Double(attributeDict["lon"] ?? "0")
+            currentEle = nil
+            currentTime = nil
+            
+        case "rtept":
+            isRoutePoint = true
             currentLat = Double(attributeDict["lat"] ?? "0")
             currentLon = Double(attributeDict["lon"] ?? "0")
             currentEle = nil
@@ -246,6 +290,16 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
             default:
                 break
             }
+        } else if isRoutePoint {
+            switch currentElement {
+            case "ele":
+                currentEle = Double(trimmedString)
+            case "time":
+                let formatter = ISO8601DateFormatter()
+                currentTime = formatter.date(from: trimmedString)
+            default:
+                break
+            }
         } else if isWaypoint {
             switch currentElement {
             case "ele":
@@ -263,6 +317,20 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
                 break
             }
         } else if isTrack {
+            switch currentElement {
+            case "name":
+                currentTrackName = trimmedString
+            case "type":
+                currentTrackType = trimmedString
+            case "time":
+                let formatter = ISO8601DateFormatter()
+                if let date = formatter.date(from: trimmedString) {
+                    currentTrackDate = date
+                }
+            default:
+                break
+            }
+        } else if isRoute {
             switch currentElement {
             case "name":
                 currentTrackName = trimmedString
@@ -308,6 +376,19 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
             }
             isTrackPoint = false
             
+        case "rtept":
+            if isRoutePoint, let lat = currentLat, let lon = currentLon {
+                let location = CLLocation(
+                    coordinate: CLLocationCoordinate2D(latitude: lat, longitude: lon),
+                    altitude: currentEle ?? 0,
+                    horizontalAccuracy: 10,
+                    verticalAccuracy: 10,
+                    timestamp: currentTime ?? Date()
+                )
+                currentRoutePoints.append(location)
+            }
+            isRoutePoint = false
+            
         case "wpt":
             if isWaypoint, let lat = currentLat, let lon = currentLon {
                 let waypoint = GPXWaypoint(
@@ -336,9 +417,15 @@ class GPXParserDelegate: NSObject, XMLParserDelegate {
             finalizeCurrentTrackIfNeeded()
             isTrack = false
             
+        case "rte":
+            // End of route - finalize it
+            finalizeCurrentRouteIfNeeded()
+            isRoute = false
+            
         case "gpx":
-            // End of file - make sure we've finalized any in-progress track
+            // End of file - make sure we've finalized any in-progress track or route
             finalizeCurrentTrackIfNeeded()
+            finalizeCurrentRouteIfNeeded()
             
         default:
             break
