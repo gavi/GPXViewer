@@ -28,7 +28,12 @@ struct ElevationOverlay: View {
         // Calculate display elevations with unit conversion if needed
         var chartPoints: [ElevationPoint] = []
         
-        for (index, elevation) in rawElevations.enumerated() {
+        // For very large datasets (>2000 points), use stride to sample fewer points
+        let strideSize = rawElevations.count > 2000 ? max(1, rawElevations.count / 1000) : 1
+        
+        for i in stride(from: 0, to: rawElevations.count, by: strideSize) {
+            let index = i
+            let elevation = rawElevations[index]
             let distanceMeters = calculateDistance(upTo: index, locations: locations)
             
             // Convert to proper units (kilometers or miles)
@@ -41,6 +46,27 @@ struct ElevationOverlay: View {
                 ? elevation  // keep as meters
                 : elevation * 3.28084  // to feet
             
+            chartPoints.append(ElevationPoint(
+                distance: displayDistance,
+                elevation: displayElevation,
+                index: index
+            ))
+        }
+        
+        // Always include the last point if we're striding
+        if strideSize > 1 && !chartPoints.isEmpty && chartPoints.last?.index != rawElevations.count - 1 {
+            let index = rawElevations.count - 1
+            let elevation = rawElevations[index]
+            let distanceMeters = calculateDistance(upTo: index, locations: locations)
+            
+            let displayDistance = settings.useMetricSystem 
+                ? distanceMeters / 1000 
+                : distanceMeters / 1609.34
+                
+            let displayElevation = settings.useMetricSystem
+                ? elevation
+                : elevation * 3.28084
+                
             chartPoints.append(ElevationPoint(
                 distance: displayDistance,
                 elevation: displayElevation,
@@ -169,6 +195,7 @@ struct ElevationChartView: View {
     
     var body: some View {
         Chart {
+            // Use ForEach with individual points for Swift Charts compatibility
             ForEach(points) { point in
                 // Area under the line
                 AreaMark(
@@ -188,8 +215,8 @@ struct ElevationChartView: View {
                 )
             }
             
+            // Use ForEach for line too to avoid compiler complexity
             ForEach(points) { point in
-                // Line above
                 LineMark(
                     x: .value("Distance", point.distance),
                     y: .value("Elevation", point.elevation)
@@ -206,23 +233,26 @@ struct ElevationChartView: View {
         }
         .chartYScale(domain: [minValue * 0.95, maxValue * 1.05])
         .chartYAxis {
-            AxisMarks(position: .leading) { _ in
+            AxisMarks(position: .leading) { value in
                 AxisGridLine()
                 AxisTick()
                 AxisValueLabel {
-                    Text(yUnit)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    if let yValue = value.as(Double.self) {
+                        Text("\(Int(yValue)) \(yUnit)")
+                            .font(.caption2)
+                    }
                 }
             }
         }
         .chartXAxis {
-            AxisMarks(position: .bottom) { _ in
+            AxisMarks(position: .bottom) { value in
                 AxisGridLine()
+                AxisTick()
                 AxisValueLabel {
-                    Text(xUnit)
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
+                    if let xValue = value.as(Double.self) {
+                        Text(String(format: "%.1f \(xUnit)", xValue))
+                            .font(.caption2)
+                    }
                 }
             }
         }
