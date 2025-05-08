@@ -1437,19 +1437,24 @@ class Coordinator: NSObject, MKMapViewDelegate {
             }
             
             // Select renderer based on the visualization mode
+            // Get the track line width from UserDefaults
+            let lineWidth = UserDefaults.standard.double(forKey: "trackLineWidth")
+            // Use the saved line width (with fallback to 4 if not set)
+            let finalLineWidth = lineWidth >= 2 && lineWidth <= 10 ? lineWidth : 4
+            
             switch mode {
             case .effort:
                 // Create original effort-based gradient polyline renderer
                 let gradientRenderer = GradientPolylineRenderer(polyline: polyline)
                 gradientRenderer.elevationPolyline = polyline
-                gradientRenderer.lineWidth = 4  // Increased line width for better visibility
+                gradientRenderer.lineWidth = finalLineWidth
                 return gradientRenderer
                 
             case .gradient:
                 // Create pure elevation gradient polyline renderer
                 let elevationRenderer = ElevationGradientPolylineRenderer(polyline: polyline)
                 elevationRenderer.elevationPolyline = polyline
-                elevationRenderer.lineWidth = 4  // Increased line width for better visibility
+                elevationRenderer.lineWidth = finalLineWidth
                 return elevationRenderer
             }
         }

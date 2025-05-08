@@ -38,6 +38,28 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.top, 4)
+                
+                Divider()
+                    .padding(.vertical, 8)
+                
+                Text("Track Line Width: \(Int(settings.trackLineWidth))")
+                
+                Slider(
+                    value: $settings.trackLineWidth,
+                    in: 2...10,
+                    step: 1
+                ) {
+                    Text("Track Line Width")
+                } minimumValueLabel: {
+                    Text("2")
+                } maximumValueLabel: {
+                    Text("10")
+                }
+                
+                Text("Adjust the thickness of track lines on the map")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.top, 4)
             }
         }
         .navigationTitle("Settings")

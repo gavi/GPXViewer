@@ -75,6 +75,12 @@ class SettingsModel: ObservableObject {
         }
     }
     
+    @Published var trackLineWidth: Double {
+        didSet {
+            UserDefaults.standard.set(trackLineWidth, forKey: "trackLineWidth")
+        }
+    }
+    
     init() {
         self.useMetricSystem = UserDefaults.standard.bool(forKey: "useMetricSystem", defaultValue: true)
         
@@ -90,6 +96,13 @@ class SettingsModel: ObservableObject {
             self.elevationVisualizationMode = mode
         } else {
             self.elevationVisualizationMode = .effort
+        }
+        
+        // Load track line width with a default of 4 and bounds of 2-10
+        self.trackLineWidth = UserDefaults.standard.double(forKey: "trackLineWidth")
+        if self.trackLineWidth < 2 || self.trackLineWidth > 10 {
+            self.trackLineWidth = 4
+            UserDefaults.standard.set(self.trackLineWidth, forKey: "trackLineWidth")
         }
     }
     
