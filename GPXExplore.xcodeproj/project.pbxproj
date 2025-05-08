@@ -6,11 +6,49 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		56E043D62DCD177400F18E63 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56E043D52DCD177400F18E63 /* Quartz.framework */; };
+		56E043E32DCD177400F18E63 /* QuickLookGPX.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 56E043D32DCD177400F18E63 /* QuickLookGPX.appex */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		56E043E12DCD177400F18E63 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 56F350252DC17A4A0002EC04 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 56E043D22DCD177400F18E63;
+			remoteInfo = QuickLookGPX;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		56E043E42DCD177400F18E63 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				56E043E32DCD177400F18E63 /* QuickLookGPX.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		56E043D32DCD177400F18E63 /* QuickLookGPX.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = QuickLookGPX.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		56E043D52DCD177400F18E63 /* Quartz.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Quartz.framework; path = System/Library/Frameworks/Quartz.framework; sourceTree = SDKROOT; };
 		56F3502D2DC17A4A0002EC04 /* GPXExplore.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GPXExplore.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		56E043E82DCD177400F18E63 /* Exceptions for "QuickLookGPX" folder in "QuickLookGPX" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+			);
+			target = 56E043D22DCD177400F18E63 /* QuickLookGPX */;
+		};
 		56F3503A2DC17A4B0002EC04 /* Exceptions for "GPXExplore" folder in "GPXExplore" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
@@ -24,6 +62,14 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		56E043D72DCD177400F18E63 /* QuickLookGPX */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				56E043E82DCD177400F18E63 /* Exceptions for "QuickLookGPX" folder in "QuickLookGPX" target */,
+			);
+			path = QuickLookGPX;
+			sourceTree = "<group>";
+		};
 		56F3502F2DC17A4A0002EC04 /* GPXExplore */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
@@ -35,6 +81,14 @@
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
+		56E043D02DCD177400F18E63 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				56E043D62DCD177400F18E63 /* Quartz.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		56F3502A2DC17A4A0002EC04 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -45,10 +99,20 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		56E043D42DCD177400F18E63 /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				56E043D52DCD177400F18E63 /* Quartz.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
 		56F350242DC17A4A0002EC04 = {
 			isa = PBXGroup;
 			children = (
 				56F3502F2DC17A4A0002EC04 /* GPXExplore */,
+				56E043D72DCD177400F18E63 /* QuickLookGPX */,
+				56E043D42DCD177400F18E63 /* Frameworks */,
 				56F3502E2DC17A4A0002EC04 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -57,6 +121,7 @@
 			isa = PBXGroup;
 			children = (
 				56F3502D2DC17A4A0002EC04 /* GPXExplore.app */,
+				56E043D32DCD177400F18E63 /* QuickLookGPX.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -64,6 +129,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		56E043D22DCD177400F18E63 /* QuickLookGPX */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 56E043E72DCD177400F18E63 /* Build configuration list for PBXNativeTarget "QuickLookGPX" */;
+			buildPhases = (
+				56E043CF2DCD177400F18E63 /* Sources */,
+				56E043D02DCD177400F18E63 /* Frameworks */,
+				56E043D12DCD177400F18E63 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				56E043D72DCD177400F18E63 /* QuickLookGPX */,
+			);
+			name = QuickLookGPX;
+			packageProductDependencies = (
+			);
+			productName = QuickLookGPX;
+			productReference = 56E043D32DCD177400F18E63 /* QuickLookGPX.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		56F3502C2DC17A4A0002EC04 /* GPXExplore */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 56F3503B2DC17A4B0002EC04 /* Build configuration list for PBXNativeTarget "GPXExplore" */;
@@ -71,10 +158,12 @@
 				56F350292DC17A4A0002EC04 /* Sources */,
 				56F3502A2DC17A4A0002EC04 /* Frameworks */,
 				56F3502B2DC17A4A0002EC04 /* Resources */,
+				56E043E42DCD177400F18E63 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				56E043E22DCD177400F18E63 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				56F3502F2DC17A4A0002EC04 /* GPXExplore */,
@@ -96,6 +185,9 @@
 				LastSwiftUpdateCheck = 1630;
 				LastUpgradeCheck = 1630;
 				TargetAttributes = {
+					56E043D22DCD177400F18E63 = {
+						CreatedOnToolsVersion = 16.3;
+					};
 					56F3502C2DC17A4A0002EC04 = {
 						CreatedOnToolsVersion = 16.3;
 					};
@@ -116,11 +208,19 @@
 			projectRoot = "";
 			targets = (
 				56F3502C2DC17A4A0002EC04 /* GPXExplore */,
+				56E043D22DCD177400F18E63 /* QuickLookGPX */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		56E043D12DCD177400F18E63 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		56F3502B2DC17A4A0002EC04 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -131,6 +231,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		56E043CF2DCD177400F18E63 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		56F350292DC17A4A0002EC04 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -140,7 +247,78 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		56E043E22DCD177400F18E63 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			platformFilters = (
+				macos,
+			);
+			target = 56E043D22DCD177400F18E63 /* QuickLookGPX */;
+			targetProxy = 56E043E12DCD177400F18E63 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		56E043E52DCD177400F18E63 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = QuickLookGPX/QuickLookGPX.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PHKS4YZMLE;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = QuickLookGPX/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = QuickLookGPX;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.objectgraph.GPXExplore.QuickLookGPX;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		56E043E62DCD177400F18E63 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = QuickLookGPX/QuickLookGPX.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = PHKS4YZMLE;
+				ENABLE_HARDENED_RUNTIME = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = QuickLookGPX/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = QuickLookGPX;
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.4;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.objectgraph.GPXExplore.QuickLookGPX;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
 		56F3503C2DC17A4B0002EC04 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -362,6 +540,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		56E043E72DCD177400F18E63 /* Build configuration list for PBXNativeTarget "QuickLookGPX" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				56E043E52DCD177400F18E63 /* Debug */,
+				56E043E62DCD177400F18E63 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		56F350282DC17A4A0002EC04 /* Build configuration list for PBXProject "GPXExplore" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

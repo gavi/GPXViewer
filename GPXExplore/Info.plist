@@ -20,6 +20,8 @@
 			<string>GPXExploreDocument</string>
 			<key>NSUbiquitousDocumentUserActivityType</key>
 			<string>$(PRODUCT_BUNDLE_IDENTIFIER).gpxdocument</string>
+			<key>LSSupportsQuickLook</key>
+			<true/>
 		</dict>
 	</array>
 	<key>CFBundleURLTypes</key>
