@@ -11,6 +11,19 @@ struct ContentView: View {
     @State private var selectedTrackIndex: Int = 0
     @State private var segments: [GPXTrackSegment] = []
     @State private var waypointsVisible: Bool = true
+    @State private var documentTitle: String = "GPX Explorer"
+        
+    private func updateDocumentTitle() {
+        // Update title based on the GPX filename
+        if let filename = document.gpxFile?.filename {
+            let fileNameWithoutExtension = (filename as NSString).deletingPathExtension
+            documentTitle = fileNameWithoutExtension
+
+        } else {
+            documentTitle = "GPX Explorer"
+        }
+    }
+    
     
     private func updateFromDocument() {
         segments = document.trackSegments
@@ -171,6 +184,16 @@ struct ContentView: View {
                         .foregroundColor(.secondary)
                 }
             }
+        }
+        .navigationTitle(documentTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            updateDocumentTitle()
+            updateFromDocument()
+        }
+        // Check for changes to the GPX file
+        .onChange(of: document.gpxFile?.filename) { _ in
+            updateDocumentTitle()
         }
     }
 }
