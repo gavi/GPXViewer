@@ -8,7 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		56E043D62DCD177400F18E63 /* Quartz.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 56E043D52DCD177400F18E63 /* Quartz.framework */; };
-		56E043E32DCD177400F18E63 /* QuickLookGPX.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 56E043D32DCD177400F18E63 /* QuickLookGPX.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		56E043E32DCD177400F18E63 /* QuickLookGPX.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 56E043D32DCD177400F18E63 /* QuickLookGPX.appex */; platformFilters = (macos, ); settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -250,6 +250,9 @@
 /* Begin PBXTargetDependency section */
 		56E043E22DCD177400F18E63 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
+			platformFilters = (
+				macos,
+			);
 			target = 56E043D22DCD177400F18E63 /* QuickLookGPX */;
 			targetProxy = 56E043E12DCD177400F18E63 /* PBXContainerItemProxy */;
 		};
