@@ -13,6 +13,7 @@ struct TracksDrawer: View {
     @Binding var selectedTrackIndex: Int
     @Binding var segments: [GPXTrackSegment]
     @Binding var waypointsVisible: Bool
+    @Binding var selectedWaypointIndex: Int
     @EnvironmentObject var settings: SettingsModel
     
     // Optional closure to call when a waypoint is selected
@@ -163,7 +164,11 @@ struct TracksDrawer: View {
                                 WaypointRow(
                                     waypoint: waypoint,
                                     waypointIndex: waypointIndex,
+                                    isSelected: selectedWaypointIndex == waypointIndex,
                                     onSelect: {
+                                        // Update selected waypoint index
+                                        selectedWaypointIndex = waypointIndex
+                                        
                                         // Trigger the map to center on this waypoint
                                         if let action = onWaypointSelected {
                                             action(waypoint.coordinate)
@@ -404,6 +409,7 @@ struct WaypointsHeaderRow: View {
 struct WaypointRow: View {
     let waypoint: GPXWaypoint
     let waypointIndex: Int
+    let isSelected: Bool
     var onSelect: (() -> Void)? = nil
     
     var body: some View {
@@ -416,9 +422,9 @@ struct WaypointRow: View {
             Image(systemName: getIconForWaypoint(waypoint))
                 .frame(width: 20, height: 20)
                 #if os(iOS)
-                .foregroundColor(Color(UIColor.systemPurple))
+                .foregroundColor(isSelected ? Color(UIColor.systemBlue) : Color(UIColor.systemPurple))
                 #else
-                .foregroundColor(Color.purple)
+                .foregroundColor(isSelected ? Color.accentColor : Color.purple)
                 #endif
             
             // Waypoint info
@@ -426,6 +432,7 @@ struct WaypointRow: View {
                 Text(waypoint.name)
                     .font(.system(size: 13))
                     .lineLimit(1)
+                    .fontWeight(isSelected ? .bold : .regular)
                 
                 if let description = waypoint.description, !description.isEmpty {
                     Text(description)
@@ -450,6 +457,17 @@ struct WaypointRow: View {
             }
             
             Spacer()
+            
+            // Selection indicator
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(.system(size: 12, weight: .bold))
+                    #if os(iOS)
+                    .foregroundColor(Color(UIColor.systemBlue))
+                    #else
+                    .foregroundColor(Color.accentColor)
+                    #endif
+            }
         }
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
@@ -461,10 +479,10 @@ struct WaypointRow: View {
             }
         }
         #if os(iOS)
-        .background(Color(UIColor.systemPurple).opacity(0.05))
+        .background(isSelected ? Color(UIColor.systemBlue).opacity(0.1) : Color(UIColor.systemPurple).opacity(0.05))
         .cornerRadius(4)
         #else
-        .background(Color.purple.opacity(0.05))
+        .background(isSelected ? Color.accentColor.opacity(0.1) : Color.purple.opacity(0.05))
         .cornerRadius(4)
         #endif
     }
@@ -556,6 +574,7 @@ extension TracksDrawer {
         selectedTrackIndex: .constant(0),
         segments: .constant(mockSegments),
         waypointsVisible: .constant(true),
+        selectedWaypointIndex: .constant(1), // Preview with second waypoint selected
         onWaypointSelected: { coordinate in
             print("Waypoint selected at \(coordinate.latitude), \(coordinate.longitude)")
         }

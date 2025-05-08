@@ -11,6 +11,7 @@ struct ContentView: View {
     @State private var selectedTrackIndex: Int = 0
     @State private var segments: [GPXTrackSegment] = []
     @State private var waypointsVisible: Bool = true
+    @State private var selectedWaypointIndex: Int = -1 // -1 indicates no selection
     @State private var selectedWaypointCoordinate: CLLocationCoordinate2D? = nil
     @State private var triggerSpanView: Bool = false
     
@@ -181,6 +182,7 @@ struct ContentView: View {
                             selectedTrackIndex: $selectedTrackIndex,
                             segments: $segments,
                             waypointsVisible: $waypointsVisible,
+                            selectedWaypointIndex: $selectedWaypointIndex,
                             onWaypointSelected: { coordinate in
                                 // Update the state to center on this waypoint
                                 selectedWaypointCoordinate = coordinate
