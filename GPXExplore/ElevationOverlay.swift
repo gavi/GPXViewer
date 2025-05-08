@@ -28,8 +28,8 @@ struct ElevationOverlay: View {
         // Calculate display elevations with unit conversion if needed
         var chartPoints: [ElevationPoint] = []
         
-        // For very large datasets (>2000 points), use stride to sample fewer points
-        let strideSize = rawElevations.count > 2000 ? max(1, rawElevations.count / 1000) : 1
+        // Use the chart data density setting to determine stride size
+        let strideSize = calculateStrideSize(for: rawElevations.count)
         
         for i in stride(from: 0, to: rawElevations.count, by: strideSize) {
             let index = i
@@ -182,6 +182,28 @@ struct ElevationOverlay: View {
             let feet = elevation * 3.28084
             return String(format: "%.0f ft", feet)
         }
+    }
+    
+    // Helper function to calculate appropriate stride size based on settings
+    private func calculateStrideSize(for dataPointCount: Int) -> Int {
+        // Get the stride factor from settings
+        let strideFactor = settings.chartDataStride
+        
+        // For small datasets, don't stride at all
+        if dataPointCount <= 500 {
+            return 1
+        }
+        
+        // For medium datasets, use moderate stride if density is not maximum
+        if dataPointCount <= 2000 {
+            return settings.chartDataDensity >= 1.0 ? 1 : strideFactor
+        }
+        
+        // For very large datasets, calculate a dynamic stride to get a reasonable number of points
+        // Min points: dataPointCount / (strideFactor * 10)
+        // Max points: dataPointCount / strideFactor
+        let baseStride = max(1, dataPointCount / 2000) * strideFactor
+        return baseStride
     }
 }
 

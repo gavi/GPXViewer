@@ -87,6 +87,28 @@ class SettingsModel: ObservableObject {
         }
     }
     
+    @Published var chartDataDensity: Double {
+        didSet {
+            UserDefaults.standard.set(chartDataDensity, forKey: "chartDataDensity")
+        }
+    }
+    
+    // Calculate the stride to use for elevation chart data sampling
+    var chartDataStride: Int {
+        let densityFactor = chartDataDensity // 1.0 = full resolution, 0.0 = lowest resolution
+        // Dynamically adjust based on density (higher value = lower stride = more points)
+        let basePoints = 2000
+        // When density is 1.0, we show all points up to basePoints before striding
+        // When density is 0.0, we show only about 200 points
+        if densityFactor >= 1.0 {
+            return 1 // Full resolution
+        } else {
+            // Scale between 10 (low density) and 1 (high density)
+            let maxStride = 10
+            return max(1, Int((1.0 - densityFactor) * Double(maxStride - 1) + 1))
+        }
+    }
+    
     init() {
         // Initialize all stored properties in the correct order
         self.useMetricSystem = UserDefaults.standard.bool(forKey: "useMetricSystem", defaultValue: true)
@@ -117,6 +139,15 @@ class SettingsModel: ObservableObject {
             UserDefaults.standard.set(4.0, forKey: "trackLineWidth")
         } else {
             self.trackLineWidth = lineWidth
+        }
+        
+        // Initialize chart data density with a default of 0.5 (medium resolution)
+        let density = UserDefaults.standard.double(forKey: "chartDataDensity")
+        if density < 0 || density > 1 {
+            self.chartDataDensity = 0.5
+            UserDefaults.standard.set(0.5, forKey: "chartDataDensity")
+        } else {
+            self.chartDataDensity = density
         }
     }
     
