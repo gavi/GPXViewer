@@ -81,9 +81,39 @@ class SettingsModel: ObservableObject {
         }
     }
     
+    @Published var defaultShowElevationOverlay: Bool {
+        didSet {
+            UserDefaults.standard.set(defaultShowElevationOverlay, forKey: "defaultShowElevationOverlay")
+        }
+    }
+    
+    @Published var chartDataDensity: Double {
+        didSet {
+            UserDefaults.standard.set(chartDataDensity, forKey: "chartDataDensity")
+        }
+    }
+    
+    // Calculate the stride to use for elevation chart data sampling
+    var chartDataStride: Int {
+        let densityFactor = chartDataDensity // 1.0 = full resolution, 0.0 = lowest resolution
+        // Dynamically adjust based on density (higher value = lower stride = more points)
+        let basePoints = 2000
+        // When density is 1.0, we show all points up to basePoints before striding
+        // When density is 0.0, we show only about 200 points
+        if densityFactor >= 1.0 {
+            return 1 // Full resolution
+        } else {
+            // Scale between 10 (low density) and 1 (high density)
+            let maxStride = 10
+            return max(1, Int((1.0 - densityFactor) * Double(maxStride - 1) + 1))
+        }
+    }
+    
     init() {
+        // Initialize all stored properties in the correct order
         self.useMetricSystem = UserDefaults.standard.bool(forKey: "useMetricSystem", defaultValue: true)
         
+        // Initialize map style
         if let savedMapStyle = UserDefaults.standard.string(forKey: "mapStyle"),
            let style = MapStyle(rawValue: savedMapStyle) {
             self.mapStyle = style
@@ -91,6 +121,7 @@ class SettingsModel: ObservableObject {
             self.mapStyle = .standard
         }
         
+        // Initialize elevation visualization mode
         if let savedVisualizationMode = UserDefaults.standard.string(forKey: "elevationVisualizationMode"),
            let mode = ElevationVisualizationMode(rawValue: savedVisualizationMode) {
             self.elevationVisualizationMode = mode
@@ -98,11 +129,25 @@ class SettingsModel: ObservableObject {
             self.elevationVisualizationMode = .effort
         }
         
-        // Load track line width with a default of 4 and bounds of 2-10
-        self.trackLineWidth = UserDefaults.standard.double(forKey: "trackLineWidth")
-        if self.trackLineWidth < 2 || self.trackLineWidth > 10 {
+        // Initialize default elevation overlay visibility
+        self.defaultShowElevationOverlay = UserDefaults.standard.bool(forKey: "defaultShowElevationOverlay", defaultValue: false)
+        
+        // Initialize track line width with a default of 4 and bounds of 2-10
+        let lineWidth = UserDefaults.standard.double(forKey: "trackLineWidth")
+        if lineWidth < 2 || lineWidth > 10 {
             self.trackLineWidth = 4
-            UserDefaults.standard.set(self.trackLineWidth, forKey: "trackLineWidth")
+            UserDefaults.standard.set(4.0, forKey: "trackLineWidth")
+        } else {
+            self.trackLineWidth = lineWidth
+        }
+        
+        // Initialize chart data density with a default of 0.5 (medium resolution)
+        let density = UserDefaults.standard.double(forKey: "chartDataDensity")
+        if density < 0 || density > 1 {
+            self.chartDataDensity = 0.5
+            UserDefaults.standard.set(0.5, forKey: "chartDataDensity")
+        } else {
+            self.chartDataDensity = density
         }
     }
     

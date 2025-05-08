@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedWaypointIndex: Int = -1 // -1 indicates no selection
     @State private var selectedWaypointCoordinate: CLLocationCoordinate2D? = nil
     @State private var triggerSpanView: Bool = false
+    @State private var isElevationOverlayVisible: Bool = false
     
     private func updateFromDocument() {
         segments = document.trackSegments
@@ -83,6 +84,8 @@ struct ContentView: View {
                 Color.clear
                     .onAppear {
                         updateFromDocument()
+                        // Initialize elevation overlay visibility from settings
+                        isElevationOverlayVisible = settings.defaultShowElevationOverlay
                     }
                     .onChange(of: document.trackSegments.count) { _ in
                         updateFromDocument()
@@ -115,8 +118,22 @@ struct ContentView: View {
                         if let track = selectedTrack {
                             // Create a workout based only on visible segments
                             let visibleWorkout = createWorkoutFromSegments(visibleTrackSegments, originalTrack: track)
-                            RouteInfoOverlay(trackSegments: visibleTrackSegments, workout: visibleWorkout)
-                                .environmentObject(settings)
+                            
+                            VStack {
+                                // Route info at the top
+                                RouteInfoOverlay(trackSegments: visibleTrackSegments, workout: visibleWorkout)
+                                    .environmentObject(settings)
+                                
+                                Spacer()
+                                
+                                // Elevation overlay at the bottom
+                                if isElevationOverlayVisible && !visibleTrackSegments.isEmpty {
+                                    ElevationOverlay(trackSegments: visibleTrackSegments)
+                                        .environmentObject(settings)
+                                        .transition(.move(edge: .bottom))
+                                        .animation(.easeInOut, value: isElevationOverlayVisible)
+                                }
+                            }
                         }
                     }
                     #if os(iOS) || os(visionOS)
@@ -151,6 +168,15 @@ struct ContentView: View {
                                 triggerSpanView = true
                             }) {
                                 Label("Fit to View", systemImage: "arrow.up.left.and.arrow.down.right")
+                            }
+                        }
+                        
+                        // Elevation overlay toggle
+                        ToolbarItem(placement: .automatic) {
+                            Button(action: {
+                                isElevationOverlayVisible.toggle()
+                            }) {
+                                Label("Elevation", systemImage: "mountain.2")
                             }
                         }
                         
