@@ -1043,7 +1043,6 @@ struct MapView: NSViewRepresentable {
 #if os(iOS) || os(macOS)
 
 // Custom annotation for waypoints
-// Custom annotation for waypoints
 class WaypointAnnotation: NSObject, MKAnnotation {
     let waypoint: GPXWaypoint
     var _subtitle: String?
@@ -1065,12 +1064,8 @@ class WaypointAnnotation: NSObject, MKAnnotation {
         self.waypoint = waypoint
         super.init()
         
-        // Initialize with coordinate as subtitle if no description
-        if waypoint.description == nil || waypoint.description?.isEmpty == true {
-            let lat = String(format: "%.6f", waypoint.coordinate.latitude)
-            let lon = String(format: "%.6f", waypoint.coordinate.longitude)
-            _subtitle = "\(lat), \(lon)"
-        }
+        // Subtitle will be set in the mapView(_:viewFor:) method
+        // We don't set default values here to allow the view to determine them
     }
 }
 
@@ -1323,11 +1318,16 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 annotationView?.rightCalloutAccessoryView = button
 #endif
                 
-                // Set subtitle with coordinates for all waypoints
-                let coordinate = waypointAnnotation.coordinate
-                let lat = String(format: "%.6f", coordinate.latitude)
-                let lon = String(format: "%.6f", coordinate.longitude)
-                waypointAnnotation._subtitle = "\(lat), \(lon)"
+                // Set subtitle based on waypoint description if available, otherwise use coordinates
+                if let description = waypointAnnotation.waypoint.description, !description.isEmpty {
+                    waypointAnnotation._subtitle = description
+                } else {
+                    // Fallback to coordinates if no description
+                    let coordinate = waypointAnnotation.coordinate
+                    let lat = String(format: "%.6f", coordinate.latitude)
+                    let lon = String(format: "%.6f", coordinate.longitude)
+                    waypointAnnotation._subtitle = "\(lat), \(lon)"
+                }
                 
                 // Use custom glyph based on waypoint symbol if available
                 if let symbol = waypointAnnotation.waypoint.symbol {
