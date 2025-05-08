@@ -42,6 +42,17 @@ struct SettingsView: View {
                 Divider()
                     .padding(.vertical, 8)
                 
+                Toggle("Show Elevation Chart by Default", isOn: $settings.defaultShowElevationOverlay)
+                    .padding(.vertical, 4)
+                
+                Text("Controls whether the elevation chart overlay appears by default when opening GPX files")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 8)
+                
+                Divider()
+                    .padding(.vertical, 8)
+                
                 Text("Track Line Width: \(Int(settings.trackLineWidth))")
                 
                 Slider(
