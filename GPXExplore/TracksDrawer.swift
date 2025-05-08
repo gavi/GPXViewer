@@ -15,6 +15,9 @@ struct TracksDrawer: View {
     @Binding var waypointsVisible: Bool
     @EnvironmentObject var settings: SettingsModel
     
+    // Optional closure to call when a waypoint is selected
+    var onWaypointSelected: ((CLLocationCoordinate2D) -> Void)?
+    
     // Track expansion states
     @State private var expandedTracks: [Bool] = []
     @State private var waypointsExpanded: Bool = true
@@ -159,7 +162,13 @@ struct TracksDrawer: View {
                                 let waypoint = document.waypoints[waypointIndex]
                                 WaypointRow(
                                     waypoint: waypoint,
-                                    waypointIndex: waypointIndex
+                                    waypointIndex: waypointIndex,
+                                    onSelect: {
+                                        // Trigger the map to center on this waypoint
+                                        if let action = onWaypointSelected {
+                                            action(waypoint.coordinate)
+                                        }
+                                    }
                                 )
                             }
                         }
@@ -395,6 +404,7 @@ struct WaypointsHeaderRow: View {
 struct WaypointRow: View {
     let waypoint: GPXWaypoint
     let waypointIndex: Int
+    var onSelect: (() -> Void)? = nil
     
     var body: some View {
         HStack(spacing: 8) {
@@ -444,6 +454,19 @@ struct WaypointRow: View {
         .padding(.vertical, 4)
         .padding(.horizontal, 12)
         .padding(.leading, 20) // Indentation for hierarchy
+        .contentShape(Rectangle()) // Make the entire row tappable
+        .onTapGesture {
+            if let action = onSelect {
+                action()
+            }
+        }
+        #if os(iOS)
+        .background(Color(UIColor.systemPurple).opacity(0.05))
+        .cornerRadius(4)
+        #else
+        .background(Color.purple.opacity(0.05))
+        .cornerRadius(4)
+        #endif
     }
     
     // Helper to determine icon based on waypoint symbol or name
@@ -532,7 +555,10 @@ extension TracksDrawer {
         visibleSegments: .constant([true, false, true]),
         selectedTrackIndex: .constant(0),
         segments: .constant(mockSegments),
-        waypointsVisible: .constant(true)
+        waypointsVisible: .constant(true),
+        onWaypointSelected: { coordinate in
+            print("Waypoint selected at \(coordinate.latitude), \(coordinate.longitude)")
+        }
     )
     .environmentObject(SettingsModel())
 }

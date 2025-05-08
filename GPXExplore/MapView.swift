@@ -586,22 +586,45 @@ struct MapView: UIViewRepresentable {
     let waypoints: [GPXWaypoint]
     @EnvironmentObject var settings: SettingsModel
     
+    // Optional center point for when a waypoint is selected from the drawer
+    var centerCoordinate: CLLocationCoordinate2D?
+    var zoomLevel: Double? // Optional zoom level, default will be used if nil
+    var spanAll: Bool = false // Trigger to span the view to show all content
+    
     // Convenience init to maintain backward compatibility
     init(routeLocations: [CLLocation]) {
         self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
         self.waypoints = []
+        self.centerCoordinate = nil
+        self.zoomLevel = nil
+        self.spanAll = false
     }
     
     // New initializer for multiple segments
     init(trackSegments: [GPXTrackSegment]) {
         self.trackSegments = trackSegments
         self.waypoints = []
+        self.centerCoordinate = nil
+        self.zoomLevel = nil
+        self.spanAll = false
     }
     
     // New initializer for segments and waypoints
     init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint]) {
         self.trackSegments = trackSegments
         self.waypoints = waypoints
+        self.centerCoordinate = nil
+        self.zoomLevel = nil
+        self.spanAll = false
+    }
+    
+    // New initializer for centering on a specific waypoint
+    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint], centerCoordinate: CLLocationCoordinate2D?, zoomLevel: Double? = nil, spanAll: Bool = false) {
+        self.trackSegments = trackSegments
+        self.waypoints = waypoints
+        self.centerCoordinate = centerCoordinate
+        self.zoomLevel = zoomLevel
+        self.spanAll = spanAll
     }
     
     func makeUIView(context: Context) -> MKMapView {
@@ -739,7 +762,7 @@ struct MapView: UIViewRepresentable {
         mapView.removeAnnotations(mapView.annotations)
         
         // Skip if no segments to show
-        if trackSegments.isEmpty {
+        if trackSegments.isEmpty && waypoints.isEmpty {
             context.coordinator.elevationPolylines = []
             return
         }
@@ -758,6 +781,14 @@ struct MapView: UIViewRepresentable {
         
         // Collect all locations
         let allLocations = trackSegments.flatMap { $0.locations }
+        
+        // Add waypoint annotations
+        var waypointAnnotations: [WaypointAnnotation] = []
+        if !waypoints.isEmpty {
+            waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
+            mapView.addAnnotations(waypointAnnotations)
+        }
+        
         if !allLocations.isEmpty {
             // Add elevation markers
             addElevationMarkers(to: mapView, routeLocations: allLocations)
@@ -778,16 +809,61 @@ struct MapView: UIViewRepresentable {
                 
                 mapView.addAnnotations([startPoint, endPoint])
             }
-            
-            // Add waypoint annotations
-            if !waypoints.isEmpty {
-                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
-                mapView.addAnnotations(waypointAnnotations)
-            }
         }
         
-        // Handling initial load delayed zoom
-        if context.coordinator.isInitialLoad {
+        // Check if we need to center on a specific waypoint
+        if let center = centerCoordinate {
+            // Center the map on the specified coordinate with animation
+            let span = MKCoordinateSpan(
+                latitudeDelta: zoomLevel ?? 0.01,  // Default zoom if not specified
+                longitudeDelta: zoomLevel ?? 0.01
+            )
+            let region = MKCoordinateRegion(center: center, span: span)
+            mapView.setRegion(region, animated: true)
+            
+            // Highlight the selected waypoint if it exists
+            if let waypointAnnotation = waypointAnnotations.first(where: { 
+                $0.coordinate.latitude == center.latitude && 
+                $0.coordinate.longitude == center.longitude 
+            }) {
+                // Select the annotation to show its callout
+                mapView.selectAnnotation(waypointAnnotation, animated: true)
+            }
+        }
+        // Check if we need to span to show all content
+        else if spanAll {
+            // Combine all track locations and waypoints
+            var allLocations = trackSegments.flatMap { $0.locations }
+            
+            // Add waypoint locations if there are any
+            if !waypoints.isEmpty {
+                let waypointLocations = waypoints.map { 
+                    CLLocation(
+                        coordinate: $0.coordinate, 
+                        altitude: $0.elevation ?? 0,
+                        horizontalAccuracy: 10,
+                        verticalAccuracy: 10,
+                        timestamp: $0.timestamp ?? Date()
+                    )
+                }
+                allLocations.append(contentsOf: waypointLocations)
+            }
+            
+            if !allLocations.isEmpty {
+                // Set region to fit everything with animation
+                MapView.setRegion(for: mapView, from: allLocations)
+                
+                // Add a slight delay to ensure the map has time to process the region change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    // Apply a slight animation to make the zoom more smooth
+                    UIView.animate(withDuration: 0.3) {
+                        mapView.setRegion(mapView.region, animated: false)
+                    }
+                }
+            }
+        }
+        // Otherwise handle normal region setting
+        else if context.coordinator.isInitialLoad {
             // Collect all locations
             if !allLocations.isEmpty {
                 print("Setting up delayed zoom for initial load")
@@ -800,15 +876,27 @@ struct MapView: UIViewRepresentable {
             // 1. First time showing segments (existingOverlaysCount == 0)
             // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
             // 3. Always set region on iOS to ensure consistent behavior
-            let shouldSetRegion = !newElevationPolylines.isEmpty && 
+            let shouldSetRegion = (!newElevationPolylines.isEmpty && 
                                  (existingOverlaysCount == 0 || 
-                                  existingOverlaysCount != newElevationPolylines.count)
+                                  existingOverlaysCount != newElevationPolylines.count))
+                                 || (newElevationPolylines.isEmpty && !waypoints.isEmpty)
             
             if shouldSetRegion {
-                // Collect all locations
                 if !allLocations.isEmpty {
                     // Set the map region to fit all visible segments
                     MapView.setRegion(for: mapView, from: allLocations)
+                } else if !waypoints.isEmpty {
+                    // If we only have waypoints, set region to show all waypoints
+                    let waypointLocations = waypoints.map { 
+                        CLLocation(
+                            coordinate: $0.coordinate, 
+                            altitude: $0.elevation ?? 0,
+                            horizontalAccuracy: 10,
+                            verticalAccuracy: 10,
+                            timestamp: $0.timestamp ?? Date()
+                        )
+                    }
+                    MapView.setRegion(for: mapView, from: waypointLocations)
                 }
             }
         }
@@ -824,22 +912,45 @@ struct MapView: NSViewRepresentable {
     let waypoints: [GPXWaypoint]
     @EnvironmentObject var settings: SettingsModel
     
+    // Optional center point for when a waypoint is selected from the drawer
+    var centerCoordinate: CLLocationCoordinate2D?
+    var zoomLevel: Double? // Optional zoom level, default will be used if nil
+    var spanAll: Bool = false // Trigger to span the view to show all content
+    
     // Convenience init to maintain backward compatibility
     init(routeLocations: [CLLocation]) {
         self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
         self.waypoints = []
+        self.centerCoordinate = nil
+        self.zoomLevel = nil
+        self.spanAll = false
     }
     
     // New initializer for multiple segments
     init(trackSegments: [GPXTrackSegment]) {
         self.trackSegments = trackSegments
         self.waypoints = []
+        self.centerCoordinate = nil
+        self.zoomLevel = nil
+        self.spanAll = false
     }
     
     // New initializer for segments and waypoints
     init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint]) {
         self.trackSegments = trackSegments
         self.waypoints = waypoints
+        self.centerCoordinate = nil
+        self.zoomLevel = nil
+        self.spanAll = false
+    }
+    
+    // New initializer for centering on a specific waypoint
+    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint], centerCoordinate: CLLocationCoordinate2D?, zoomLevel: Double? = nil, spanAll: Bool = false) {
+        self.trackSegments = trackSegments
+        self.waypoints = waypoints
+        self.centerCoordinate = centerCoordinate
+        self.zoomLevel = zoomLevel
+        self.spanAll = spanAll
     }
     
     func makeNSView(context: Context) -> MKMapView {
@@ -970,8 +1081,8 @@ struct MapView: NSViewRepresentable {
         context.coordinator.clearOverlays(from: mapView)
         mapView.removeAnnotations(mapView.annotations)
         
-        // Skip if no segments to show
-        if trackSegments.isEmpty {
+        // Skip if no segments or waypoints to show
+        if trackSegments.isEmpty && waypoints.isEmpty {
             context.coordinator.elevationPolylines = []
             return
         }
@@ -990,6 +1101,14 @@ struct MapView: NSViewRepresentable {
         
         // Collect all locations
         let allLocations = trackSegments.flatMap { $0.locations }
+        
+        // Add waypoint annotations
+        var waypointAnnotations: [WaypointAnnotation] = []
+        if !waypoints.isEmpty {
+            waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
+            mapView.addAnnotations(waypointAnnotations)
+        }
+        
         if !allLocations.isEmpty {
             // Add elevation markers
             addElevationMarkers(to: mapView, routeLocations: allLocations)
@@ -1010,26 +1129,87 @@ struct MapView: NSViewRepresentable {
                 
                 mapView.addAnnotations([startPoint, endPoint])
             }
-            
-            // Add waypoint annotations
-            if !waypoints.isEmpty {
-                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
-                mapView.addAnnotations(waypointAnnotations)
-            }
         }
         
-        // Adjust the map view region in these cases:
-        // 1. First time showing segments (existingOverlaysCount == 0)
-        // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
-        let shouldSetRegion = !newElevationPolylines.isEmpty && 
-                             (existingOverlaysCount == 0 || 
-                              existingOverlaysCount != newElevationPolylines.count)
-        
-        if shouldSetRegion {
-            // Collect all locations
+        // Check if we need to center on a specific waypoint
+        if let center = centerCoordinate {
+            // Center the map on the specified coordinate with animation
+            let span = MKCoordinateSpan(
+                latitudeDelta: zoomLevel ?? 0.01,  // Default zoom if not specified
+                longitudeDelta: zoomLevel ?? 0.01
+            )
+            let region = MKCoordinateRegion(center: center, span: span)
+            mapView.setRegion(region, animated: true)
+            
+            // Highlight the selected waypoint if it exists
+            if let waypointAnnotation = waypointAnnotations.first(where: { 
+                $0.coordinate.latitude == center.latitude && 
+                $0.coordinate.longitude == center.longitude 
+            }) {
+                // Select the annotation to show its callout
+                mapView.selectAnnotation(waypointAnnotation, animated: true)
+            }
+        }
+        // Check if we need to span to show all content
+        else if spanAll {
+            // Combine all track locations and waypoints
+            var allLocations = trackSegments.flatMap { $0.locations }
+            
+            // Add waypoint locations if there are any
+            if !waypoints.isEmpty {
+                let waypointLocations = waypoints.map { 
+                    CLLocation(
+                        coordinate: $0.coordinate, 
+                        altitude: $0.elevation ?? 0,
+                        horizontalAccuracy: 10,
+                        verticalAccuracy: 10,
+                        timestamp: $0.timestamp ?? Date()
+                    )
+                }
+                allLocations.append(contentsOf: waypointLocations)
+            }
+            
             if !allLocations.isEmpty {
-                // Set the map region to fit all visible segments
+                // Set region to fit everything with animation
                 MapView.setRegion(for: mapView, from: allLocations)
+                
+                // Add a slight delay to ensure the map has time to process the region change
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                    // Apply a slight animation to make the zoom more smooth
+                    NSAnimationContext.runAnimationGroup { context in
+                        context.duration = 0.3
+                        mapView.setRegion(mapView.region, animated: false)
+                    }
+                }
+            }
+        }
+        // Otherwise handle normal region setting
+        else {
+            // Adjust the map view region in these cases:
+            // 1. First time showing segments (existingOverlaysCount == 0)
+            // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
+            let shouldSetRegion = (!newElevationPolylines.isEmpty && 
+                                 (existingOverlaysCount == 0 || 
+                                  existingOverlaysCount != newElevationPolylines.count))
+                                 || (newElevationPolylines.isEmpty && !waypoints.isEmpty)
+            
+            if shouldSetRegion {
+                if !allLocations.isEmpty {
+                    // Set the map region to fit all visible segments
+                    MapView.setRegion(for: mapView, from: allLocations)
+                } else if !waypoints.isEmpty {
+                    // If we only have waypoints, set region to show all waypoints
+                    let waypointLocations = waypoints.map { 
+                        CLLocation(
+                            coordinate: $0.coordinate, 
+                            altitude: $0.elevation ?? 0,
+                            horizontalAccuracy: 10,
+                            verticalAccuracy: 10,
+                            timestamp: $0.timestamp ?? Date()
+                        )
+                    }
+                    MapView.setRegion(for: mapView, from: waypointLocations)
+                }
             }
         }
     }

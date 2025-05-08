@@ -11,6 +11,8 @@ struct ContentView: View {
     @State private var selectedTrackIndex: Int = 0
     @State private var segments: [GPXTrackSegment] = []
     @State private var waypointsVisible: Bool = true
+    @State private var selectedWaypointCoordinate: CLLocationCoordinate2D? = nil
+    @State private var triggerSpanView: Bool = false
     
     private func updateFromDocument() {
         segments = document.trackSegments
@@ -92,10 +94,21 @@ struct ContentView: View {
                         // Map view as the base layer
                         MapView(
                             trackSegments: visibleTrackSegments,
-                            waypoints: waypointsVisible ? document.waypoints : []
+                            waypoints: waypointsVisible ? document.waypoints : [],
+                            centerCoordinate: selectedWaypointCoordinate,
+                            zoomLevel: 0.005, // Closer zoom when centering on a waypoint
+                            spanAll: triggerSpanView // Trigger to span view to all visible content
                         )
                         .environmentObject(settings)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .onChange(of: triggerSpanView) { newValue in
+                            if newValue {
+                                // Reset the trigger after it's been used
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                                    triggerSpanView = false
+                                }
+                            }
+                        }
                         
                         // Overlay with route information
                         if let track = selectedTrack {
@@ -128,6 +141,18 @@ struct ContentView: View {
                             }
                         }
                         
+                        // Span to fit button
+                        ToolbarItem(placement: .automatic) {
+                            Button(action: {
+                                // Clear any selected waypoint first
+                                selectedWaypointCoordinate = nil
+                                // Trigger the span view
+                                triggerSpanView = true
+                            }) {
+                                Label("Fit to View", systemImage: "arrow.up.left.and.arrow.down.right")
+                            }
+                        }
+                        
                         // Tracks drawer toggle
                         ToolbarItem(placement: .automatic) {
                             TracksDrawer.toolbarButton(isOpen: $isTracksDrawerOpen)
@@ -155,7 +180,11 @@ struct ContentView: View {
                             visibleSegments: $visibleSegments,
                             selectedTrackIndex: $selectedTrackIndex,
                             segments: $segments,
-                            waypointsVisible: $waypointsVisible
+                            waypointsVisible: $waypointsVisible,
+                            onWaypointSelected: { coordinate in
+                                // Update the state to center on this waypoint
+                                selectedWaypointCoordinate = coordinate
+                            }
                         )
                         .environmentObject(settings)
                         .transition(.move(edge: .trailing))
