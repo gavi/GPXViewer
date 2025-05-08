@@ -1,0 +1,9 @@
+//
+// iOS.xcconfig
+// GPXExplore
+//
+// Configuration file for iOS builds to exclude QuickLookGPX extension.
+//
+
+// Do not embed extensions for iOS builds
+EMBED_EXTENSIONS_IN_PRODUCT = NO
