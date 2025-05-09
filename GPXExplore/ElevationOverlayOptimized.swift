@@ -113,32 +113,74 @@ struct ElevationOverlay: View {
                     VStack(alignment: .leading, spacing: 4) {
                         Text("Elevation Profile")
                             .font(.headline)
-                        
+
                         HStack(spacing: 16) {
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.down")
                                     .foregroundColor(.blue)
-                                Text("Min: \\(formatElevation(elevationData.min))")
+                                Text("Min: \(formatElevation(elevationData.min))")
                                     .font(.caption)
                             }
-                            
+
                             HStack(spacing: 4) {
                                 Image(systemName: "arrow.up")
                                     .foregroundColor(.red)
-                                Text("Max: \\(formatElevation(elevationData.max))")
+                                Text("Max: \(formatElevation(elevationData.max))")
                                     .font(.caption)
                             }
-                            
+
                             HStack(spacing: 4) {
                                 Image(systemName: "mountain.2")
                                     .foregroundColor(.green)
-                                Text("Gain: \\(formatElevation(elevationData.gain))")
+                                Text("Gain: \(formatElevation(elevationData.gain))")
                                     .font(.caption)
                             }
                         }
                     }
-                    
+
                     Spacer()
+
+                    // Zoom indicator and reset button
+                    if zoomRange != nil {
+                        HStack(spacing: 6) {
+                            // Zoom status indicator
+                            HStack(spacing: 4) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 10))
+                                    .foregroundColor(.secondary)
+
+                                let zoomStart = String(format: "%.1f", zoomRange?.lowerBound ?? 0)
+                                let zoomEnd = String(format: "%.1f", zoomRange?.upperBound ?? 0)
+                                let unit = settings.useMetricSystem ? "km" : "mi"
+
+                                Text("\(zoomStart)-\(zoomEnd)\(unit)")
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                            .padding(.vertical, 4)
+                            .padding(.horizontal, 6)
+                            .background(
+                                Capsule()
+                                    .fill(Color.secondary.opacity(0.1))
+                            )
+
+                            // Zoom out button
+                            Button(action: {
+                                // Reset zoom range to nil
+                                zoomRange = nil
+                            }) {
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 12))
+                                    .padding(5)
+                                    .background(Color.secondary.opacity(0.2))
+                                    .clipShape(Circle())
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                        .transition(.opacity)
+                        .animation(.easeInOut(duration: 0.2), value: zoomRange != nil)
+                        .help("Reset zoom")
+                    }
                 }
                 
                 // Elevation chart using Swift Charts
@@ -287,17 +329,21 @@ struct OptimizedElevationChartView: View {
             }
 
             // Get min and max distances from points
-            let minDistance = self.points.first?.distance ?? 0
-            let maxDistance = self.points.last?.distance ?? 0
+            let defaultMinDistance = self.points.first?.distance ?? 0
+            let defaultMaxDistance = self.points.last?.distance ?? 0
 
-            // Convert x position to distance
+            // Get the actual visible distances based on zoom range
+            let minDistance = self.zoomRange?.lowerBound ?? defaultMinDistance
+            let maxDistance = self.zoomRange?.upperBound ?? defaultMaxDistance
+
+            // Convert x position to distance, respecting the current zoom level
             let relativeX = (location.x - self.chartBounds.minX) / self.chartBounds.width
             let distance = minDistance + relativeX * (maxDistance - minDistance)
 
             // Avoid finding points by using direct positional mapping for large datasets
             // This creates more consistent hover behavior (equal x-spacing between hover points)
-            if self.points.count > 100 {
-                // Calculate index directly from relative position
+            if self.points.count > 100 && self.zoomRange == nil {
+                // Use direct index calculation only when not zoomed
                 let pointCount = self.points.count
                 let scaledIndex = min(pointCount - 1, max(0, Int(relativeX * Double(pointCount))))
 
@@ -310,7 +356,7 @@ struct OptimizedElevationChartView: View {
                 return
             }
 
-            // For smaller datasets, use exact distance calculation
+            // For smaller datasets or when zoomed, use exact distance calculation
             var closestIndex = 0
             var closestDistance = Double.greatestFiniteMagnitude
 
@@ -425,26 +471,46 @@ struct OptimizedElevationChartView: View {
     // Legacy function for backward compatibility - fallback only
     private func chartPositionFromGesture(_ location: CGPoint) -> (distance: Double, index: Int)? {
         guard !points.isEmpty, chartBounds.width > 0 else { return nil }
-        
+
         // Get min and max distances from points
-        let minDistance = points.first?.distance ?? 0
-        let maxDistance = points.last?.distance ?? 0
-        
-        // Convert x position to distance
+        let defaultMinDistance = points.first?.distance ?? 0
+        let defaultMaxDistance = points.last?.distance ?? 0
+
+        // Use zoom range if available
+        let minDistance = zoomRange?.lowerBound ?? defaultMinDistance
+        let maxDistance = zoomRange?.upperBound ?? defaultMaxDistance
+
+        // Convert x position to distance, respecting the current zoom level
         let relativeX = (location.x - chartBounds.minX) / chartBounds.width
         let distance = minDistance + relativeX * (maxDistance - minDistance)
-        
+
         // First check cache
         let roundedX = round(location.x)
         if let cachedIndex = indexCache[roundedX] {
             return (distance, cachedIndex)
         }
-        
-        // Fallback to simple predicted index if needed
+
+        // When zoomed, we need to find the nearest point by distance
+        if zoomRange != nil {
+            var closestIndex = 0
+            var closestDiff = Double.greatestFiniteMagnitude
+
+            for (i, point) in points.enumerated() {
+                let diff = abs(point.distance - distance)
+                if diff < closestDiff {
+                    closestDiff = diff
+                    closestIndex = i
+                }
+            }
+
+            return (distance, points[closestIndex].index)
+        }
+
+        // Fallback to simple predicted index if not zoomed
         let pointCount = points.count
         let predictedIndex = Int(relativeX * Double(pointCount - 1))
         let safeIndex = max(0, min(predictedIndex, pointCount - 1))
-        
+
         return (distance, points[safeIndex].index)
     }
     
@@ -462,6 +528,15 @@ struct OptimizedElevationChartView: View {
     }
     
     var body: some View {
+        // Clear cache when zoom changes
+        let _ = zoomRange.map { _ in
+            // This will run whenever zoomRange changes
+            DispatchQueue.main.async {
+                indexCache = [:]
+                selectedPointIndex = nil
+            }
+        }
+
         ZStack {
             // Base chart
             Chart {
@@ -484,7 +559,7 @@ struct OptimizedElevationChartView: View {
                         )
                     )
                 }
-                
+
                 // Use ForEach for line too to avoid compiler complexity
                 ForEach(points) { point in
                     LineMark(
@@ -500,7 +575,7 @@ struct OptimizedElevationChartView: View {
                     )
                     .lineStyle(StrokeStyle(lineWidth: 2))
                 }
-                
+
                 // Highlight selected point with a marker if available
                 if let selectedIndex = selectedPointIndex, let point = points.first(where: { $0.index == selectedIndex }) {
                     PointMark(
@@ -509,7 +584,7 @@ struct OptimizedElevationChartView: View {
                     )
                     .foregroundStyle(Color.white)
                     .symbolSize(150)
-                    
+
                     PointMark(
                         x: .value("Distance", point.distance),
                         y: .value("Elevation", point.elevation)
@@ -517,12 +592,12 @@ struct OptimizedElevationChartView: View {
                     .foregroundStyle(Color.red)
                     .symbolSize(100)
                 }
-                
+
                 // Show drag selection area
                 if isDragging, let start = dragStart, let end = dragEnd,
                    let (startDistance, _) = chartPositionFromGesture(CGPoint(x: start, y: 0)),
                    let (endDistance, _) = chartPositionFromGesture(CGPoint(x: end, y: 0)) {
-                    
+
                     RectangleMark(
                         xStart: .value("Start", min(startDistance, endDistance)),
                         xEnd: .value("End", max(startDistance, endDistance)),
@@ -575,7 +650,7 @@ struct OptimizedElevationChartView: View {
                             // Clear cache when bounds change
                             indexCache = [:]
                         }
-                    
+
                     // Overlay for gesture handling
                     Rectangle()
                         .fill(Color.clear)
@@ -588,7 +663,7 @@ struct OptimizedElevationChartView: View {
                                     if !isDragging && (dragStart == nil || abs(value.location.x - dragStart!) < 3) {
                                         // Process hover event in background with optimizations
                                         handleHover(at: value.location)
-                                        
+
                                         // Start drag if we've moved more than initial touch
                                         if dragStart == nil {
                                             dragStart = value.location.x
@@ -604,7 +679,7 @@ struct OptimizedElevationChartView: View {
                                     if isDragging, let start = dragStart, let end = dragEnd,
                                        let (startDistance, _) = chartPositionFromGesture(CGPoint(x: start, y: 0)),
                                        let (endDistance, _) = chartPositionFromGesture(CGPoint(x: end, y: 0)) {
-                                        
+
                                         // Only trigger zoom if selection has meaningful width
                                         if abs(end - start) > 10 {
                                             onDragSelection?(
@@ -613,7 +688,7 @@ struct OptimizedElevationChartView: View {
                                             )
                                         }
                                     }
-                                    
+
                                     // Reset drag state
                                     isDragging = false
                                     dragStart = nil
@@ -666,13 +741,13 @@ struct OptimizedElevationChartView: View {
                                     if let start = dragStart, let end = dragEnd,
                                        let (startDistance, _) = chartPositionFromGesture(CGPoint(x: start, y: 0)),
                                        let (endDistance, _) = chartPositionFromGesture(CGPoint(x: end, y: 0)) {
-                                        
+
                                         onDragSelection?(
                                             min(startDistance, endDistance),
                                             max(startDistance, endDistance)
                                         )
                                     }
-                                    
+
                                     isDragging = false
                                     dragStart = nil
                                     dragEnd = nil
@@ -687,6 +762,49 @@ struct OptimizedElevationChartView: View {
                                 }
                         )
                         #endif
+                }
+            }
+
+            // Floating zoom out button overlay in the chart
+            if zoomRange != nil {
+                VStack {
+                    HStack {
+                        // Zoomed view indicator
+                        Text("Zoomed view")
+                            .font(.caption2)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 12)
+                            .padding(.top, 8)
+
+                        Spacer()
+
+                        Button(action: {
+                            // Reset zoom range to nil
+                            onDragSelection?(0, 0)
+                        }) {
+                            HStack(spacing: 4) {
+                                Text("Reset")
+                                    .font(.caption)
+                                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                            .foregroundColor(.primary)
+                            .padding(6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.secondary.opacity(0.15))
+                                    .shadow(radius: 1)
+                            )
+                        }
+                        .buttonStyle(BorderlessButtonStyle())
+                        .padding([.top, .trailing], 8)
+                        .transition(.scale.combined(with: .opacity))
+                        .animation(.easeInOut(duration: 0.2), value: zoomRange != nil)
+                        .help("Reset zoom")
+                        .zIndex(100) // Ensure button is above the chart
+                    }
+
+                    Spacer()
                 }
             }
         }
