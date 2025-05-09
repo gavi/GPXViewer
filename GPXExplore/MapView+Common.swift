@@ -578,677 +578,72 @@ class ElevationGradientPolylineRenderer: MKPolylineRenderer {
     }
 }
 
-#if os(iOS)
-struct MapView: UIViewRepresentable {
-    let trackSegments: [GPXTrackSegment]
-    let waypoints: [GPXWaypoint]
-    @EnvironmentObject var settings: SettingsModel
-    
-    // Optional center point for when a waypoint is selected from the drawer
-    var centerCoordinate: CLLocationCoordinate2D?
-    var zoomLevel: Double? // Optional zoom level, default will be used if nil
-    var spanAll: Bool = false // Trigger to span the view to show all content
-    
-    // Convenience init to maintain backward compatibility
-    init(routeLocations: [CLLocation]) {
-        self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
-        self.waypoints = []
-        self.centerCoordinate = nil
-        self.zoomLevel = nil
-        self.spanAll = false
-    }
-    
-    // New initializer for multiple segments
-    init(trackSegments: [GPXTrackSegment]) {
-        self.trackSegments = trackSegments
-        self.waypoints = []
-        self.centerCoordinate = nil
-        self.zoomLevel = nil
-        self.spanAll = false
-    }
-    
-    // New initializer for segments and waypoints
-    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint]) {
-        self.trackSegments = trackSegments
-        self.waypoints = waypoints
-        self.centerCoordinate = nil
-        self.zoomLevel = nil
-        self.spanAll = false
-    }
-    
-    // New initializer for centering on a specific waypoint
-    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint], centerCoordinate: CLLocationCoordinate2D?, zoomLevel: Double? = nil, spanAll: Bool = false) {
-        self.trackSegments = trackSegments
-        self.waypoints = waypoints
-        self.centerCoordinate = centerCoordinate
-        self.zoomLevel = zoomLevel
-        self.spanAll = spanAll
-    }
-    
-    func makeUIView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
-        mapView.delegate = context.coordinator
-        mapView.showsUserLocation = false
-        
-        // Store if this is initial load to perform delayed zoom in
-        context.coordinator.isInitialLoad = true
-        
-        #if swift(>=5.7) && !targetEnvironment(macCatalyst)
-        if #available(iOS 16.0, *) {
-            mapView.preferredConfiguration = settings.mapStyle.mapConfiguration
-        } else {
-            mapView.mapType = settings.mapStyle.mapType
-        }
-        #else
-        mapView.mapType = settings.mapStyle.mapType
-        #endif
-        
-        // Skip if no segments
-        if trackSegments.isEmpty {
-            return mapView
-        }
-        
-        // Collect all locations for region setting
-        var allLocations: [CLLocation] = []
-        
-        // Store all polylines for the coordinator
-        var elevationPolylines: [ElevationPolyline] = []
-        
-        // Process each segment separately
-        for (index, segment) in trackSegments.enumerated() {
-            let locations = segment.locations
-            guard !locations.isEmpty else { continue }
-            
-            // Add locations for region calculation later
-            allLocations.append(contentsOf: locations)
-            
-            // Create the enhanced elevation polyline for this segment
-            let elevationPolyline = createElevationPolyline(from: locations)
-            
-            // Calculate grade data (this will smooth and process elevation data)
-            elevationPolyline.calculateGradeData(from: locations)
-            
-            // Debug elevation data
-            print("=== SEGMENT \(index+1) ELEVATION DATA SUMMARY ===")
-            print("Total points: \(elevationPolyline.elevations.count)")
-            print("Min elevation: \(elevationPolyline.minElevation)m")
-            print("Max elevation: \(elevationPolyline.maxElevation)m")
-            print("Total ascent: \(elevationPolyline.totalAscent)m")
-            print("Total descent: \(elevationPolyline.totalDescent)m")
-            print("Grade range: \(elevationPolyline.minGrade) to \(elevationPolyline.maxGrade)")
-            if !elevationPolyline.grades.isEmpty {
-                let nonZeroGrades = elevationPolyline.grades.filter { abs($0) > 0.005 }
-                print("Non-zero grades count: \(nonZeroGrades.count) of \(elevationPolyline.grades.count)")
-                
-                // Sample some grades
-                if nonZeroGrades.count > 0 {
-                    let sampleCount = min(5, nonZeroGrades.count)
-                    print("Sample grades: \(nonZeroGrades.prefix(sampleCount))")
-                }
-            }
-            print("==============================")
-            
-            // Add to map
-            mapView.addOverlay(elevationPolyline)
-            
-            // Store the polyline for the coordinator
-            elevationPolylines.append(elevationPolyline)
-        }
-        
-        // Store elevation polylines in coordinator for renderer to use
-        context.coordinator.elevationPolylines = elevationPolylines
-        
-        // Set the visible region to show all tracks
-        if !allLocations.isEmpty {
-            // Add significant elevation markers (Garmin-like)
-            addElevationMarkers(to: mapView, routeLocations: allLocations)
-            
-            // Set the region to show all segments
-            MapView.setRegion(for: mapView, from: allLocations)
-            
-            // Add start and end annotations using the first and last segments
-            if let firstSegment = trackSegments.first, 
-               let lastSegment = trackSegments.last,
-               let firstLocation = firstSegment.locations.first,
-               let lastLocation = lastSegment.locations.last {
-                
-                let startPoint = MKPointAnnotation()
-                startPoint.coordinate = firstLocation.coordinate
-                startPoint.title = "Start"
-                
-                let endPoint = MKPointAnnotation()
-                endPoint.coordinate = lastLocation.coordinate
-                endPoint.title = "End"
-                
-                mapView.addAnnotations([startPoint, endPoint])
-            }
-            
-            // Add waypoint annotations
-            if !waypoints.isEmpty {
-                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
-                mapView.addAnnotations(waypointAnnotations)
-                print("Added \(waypointAnnotations.count) waypoint annotations to map")
-            }
-            
-            // Store the locations for delayed zoom (this will be applied in updateUIView)
-            context.coordinator.initialLoadLocations = allLocations
-        }
-        
-        return mapView
-    }
-    
-    func updateUIView(_ mapView: MKMapView, context: Context) {
-        // Update map configuration if settings changed
-        #if swift(>=5.7) && !targetEnvironment(macCatalyst)
-        if #available(iOS 16.0, *) {
-            mapView.preferredConfiguration = settings.mapStyle.mapConfiguration
-        } else {
-            mapView.mapType = settings.mapStyle.mapType
-        }
-        #else
-        mapView.mapType = settings.mapStyle.mapType
-        #endif
-        
-        // Always update when this method is called to ensure visibility changes are reflected
-        // This handles both segment count changes and visibility toggling
-        
-        // Get existing overlays before clearing
-        let existingOverlaysCount = mapView.overlays.count
-        
-        // Clear existing overlays and annotations
-        context.coordinator.clearOverlays(from: mapView)
-        mapView.removeAnnotations(mapView.annotations)
-        
-        // Skip if no segments to show
-        if trackSegments.isEmpty && waypoints.isEmpty {
-            context.coordinator.elevationPolylines = []
-            return
-        }
-        
-        // Add each segment's polyline
-        var newElevationPolylines: [ElevationPolyline] = []
-        for segment in trackSegments {
-            let elevationPolyline = createElevationPolyline(from: segment.locations)
-            elevationPolyline.calculateGradeData(from: segment.locations)
-            mapView.addOverlay(elevationPolyline)
-            newElevationPolylines.append(elevationPolyline)
-        }
-        
-        // Update the coordinator's polylines
-        context.coordinator.elevationPolylines = newElevationPolylines
-        
-        // Collect all locations
-        let allLocations = trackSegments.flatMap { $0.locations }
-        
-        // Add waypoint annotations
-        var waypointAnnotations: [WaypointAnnotation] = []
-        if !waypoints.isEmpty {
-            waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
-            mapView.addAnnotations(waypointAnnotations)
-        }
-        
-        if !allLocations.isEmpty {
-            // Add elevation markers
-            addElevationMarkers(to: mapView, routeLocations: allLocations)
-            
-            // Add start and end annotations
-            if let firstSegment = trackSegments.first, 
-               let lastSegment = trackSegments.last,
-               let firstLocation = firstSegment.locations.first,
-               let lastLocation = lastSegment.locations.last {
-                
-                let startPoint = MKPointAnnotation()
-                startPoint.coordinate = firstLocation.coordinate
-                startPoint.title = "Start"
-                
-                let endPoint = MKPointAnnotation()
-                endPoint.coordinate = lastLocation.coordinate
-                endPoint.title = "End"
-                
-                mapView.addAnnotations([startPoint, endPoint])
-            }
-        }
-        
-        // Check if we need to center on a specific waypoint
-        if let center = centerCoordinate {
-            // Center the map on the specified coordinate with animation
-            let span = MKCoordinateSpan(
-                latitudeDelta: zoomLevel ?? 0.01,  // Default zoom if not specified
-                longitudeDelta: zoomLevel ?? 0.01
-            )
-            let region = MKCoordinateRegion(center: center, span: span)
-            mapView.setRegion(region, animated: true)
-            
-            // Highlight the selected waypoint if it exists
-            if let waypointAnnotation = waypointAnnotations.first(where: { 
-                $0.coordinate.latitude == center.latitude && 
-                $0.coordinate.longitude == center.longitude 
-            }) {
-                // Select the annotation to show its callout
-                mapView.selectAnnotation(waypointAnnotation, animated: true)
-            }
-        }
-        // Check if we need to span to show all content
-        else if spanAll {
-            // Combine all track locations and waypoints
-            var allLocations = trackSegments.flatMap { $0.locations }
-            
-            // Add waypoint locations if there are any
-            if !waypoints.isEmpty {
-                let waypointLocations = waypoints.map { 
-                    CLLocation(
-                        coordinate: $0.coordinate, 
-                        altitude: $0.elevation ?? 0,
-                        horizontalAccuracy: 10,
-                        verticalAccuracy: 10,
-                        timestamp: $0.timestamp ?? Date()
-                    )
-                }
-                allLocations.append(contentsOf: waypointLocations)
-            }
-            
-            if !allLocations.isEmpty {
-                // Set region to fit everything with animation
-                MapView.setRegion(for: mapView, from: allLocations)
-                
-                // Add a slight delay to ensure the map has time to process the region change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    // Apply a slight animation to make the zoom more smooth
-                    UIView.animate(withDuration: 0.3) {
-                        mapView.setRegion(mapView.region, animated: false)
-                    }
-                }
-            }
-        }
-        // Otherwise handle normal region setting
-        else if context.coordinator.isInitialLoad {
-            // Collect all locations
-            if !allLocations.isEmpty {
-                print("Setting up delayed zoom for initial load")
-                context.coordinator.performDelayedZoom(mapView: mapView, locations: allLocations)
-            }
-        } 
-        // Regular region setting (for cases other than initial load)
-        else {
-            // Adjust the map view region in these cases:
-            // 1. First time showing segments (existingOverlaysCount == 0)
-            // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
-            // 3. Always set region on iOS to ensure consistent behavior
-            let shouldSetRegion = (!newElevationPolylines.isEmpty && 
-                                 (existingOverlaysCount == 0 || 
-                                  existingOverlaysCount != newElevationPolylines.count))
-                                 || (newElevationPolylines.isEmpty && !waypoints.isEmpty)
-            
-            if shouldSetRegion {
-                if !allLocations.isEmpty {
-                    // Set the map region to fit all visible segments
-                    MapView.setRegion(for: mapView, from: allLocations)
-                } else if !waypoints.isEmpty {
-                    // If we only have waypoints, set region to show all waypoints
-                    let waypointLocations = waypoints.map { 
-                        CLLocation(
-                            coordinate: $0.coordinate, 
-                            altitude: $0.elevation ?? 0,
-                            horizontalAccuracy: 10,
-                            verticalAccuracy: 10,
-                            timestamp: $0.timestamp ?? Date()
-                        )
-                    }
-                    MapView.setRegion(for: mapView, from: waypointLocations)
-                }
-            }
-        }
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-}
-#else
-struct MapView: NSViewRepresentable {
-    let trackSegments: [GPXTrackSegment]
-    let waypoints: [GPXWaypoint]
-    @EnvironmentObject var settings: SettingsModel
-    
-    // Optional center point for when a waypoint is selected from the drawer
-    var centerCoordinate: CLLocationCoordinate2D?
-    var zoomLevel: Double? // Optional zoom level, default will be used if nil
-    var spanAll: Bool = false // Trigger to span the view to show all content
-    
-    // Convenience init to maintain backward compatibility
-    init(routeLocations: [CLLocation]) {
-        self.trackSegments = [GPXTrackSegment(locations: routeLocations, trackIndex: 0)]
-        self.waypoints = []
-        self.centerCoordinate = nil
-        self.zoomLevel = nil
-        self.spanAll = false
-    }
-    
-    // New initializer for multiple segments
-    init(trackSegments: [GPXTrackSegment]) {
-        self.trackSegments = trackSegments
-        self.waypoints = []
-        self.centerCoordinate = nil
-        self.zoomLevel = nil
-        self.spanAll = false
-    }
-    
-    // New initializer for segments and waypoints
-    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint]) {
-        self.trackSegments = trackSegments
-        self.waypoints = waypoints
-        self.centerCoordinate = nil
-        self.zoomLevel = nil
-        self.spanAll = false
-    }
-    
-    // New initializer for centering on a specific waypoint
-    init(trackSegments: [GPXTrackSegment], waypoints: [GPXWaypoint], centerCoordinate: CLLocationCoordinate2D?, zoomLevel: Double? = nil, spanAll: Bool = false) {
-        self.trackSegments = trackSegments
-        self.waypoints = waypoints
-        self.centerCoordinate = centerCoordinate
-        self.zoomLevel = zoomLevel
-        self.spanAll = spanAll
-    }
-    
-    func makeNSView(context: Context) -> MKMapView {
-        let mapView = MKMapView()
-        mapView.delegate = context.coordinator
-        mapView.showsUserLocation = false
-        
-        #if swift(>=5.7)
-        if #available(macOS 13.0, *) {
-            mapView.preferredConfiguration = settings.mapStyle.mapConfiguration
-        } else {
-            mapView.mapType = settings.mapStyle.mapType
-        }
-        #else
-        mapView.mapType = settings.mapStyle.mapType
-        #endif
-        
-        // Skip if no segments
-        if trackSegments.isEmpty {
-            return mapView
-        }
-        
-        // Collect all locations for region setting
-        var allLocations: [CLLocation] = []
-        
-        // Store all polylines for the coordinator
-        var elevationPolylines: [ElevationPolyline] = []
-        
-        // Process each segment separately
-        for (index, segment) in trackSegments.enumerated() {
-            let locations = segment.locations
-            guard !locations.isEmpty else { continue }
-            
-            // Add locations for region calculation later
-            allLocations.append(contentsOf: locations)
-            
-            // Create the enhanced elevation polyline for this segment
-            let elevationPolyline = createElevationPolyline(from: locations)
-            
-            // Calculate grade data (this will smooth and process elevation data)
-            elevationPolyline.calculateGradeData(from: locations)
-            
-            // Debug elevation data
-            print("=== SEGMENT \(index+1) ELEVATION DATA SUMMARY ===")
-            print("Total points: \(elevationPolyline.elevations.count)")
-            print("Min elevation: \(elevationPolyline.minElevation)m")
-            print("Max elevation: \(elevationPolyline.maxElevation)m")
-            print("Total ascent: \(elevationPolyline.totalAscent)m")
-            print("Total descent: \(elevationPolyline.totalDescent)m")
-            print("Grade range: \(elevationPolyline.minGrade) to \(elevationPolyline.maxGrade)")
-            if !elevationPolyline.grades.isEmpty {
-                let nonZeroGrades = elevationPolyline.grades.filter { abs($0) > 0.005 }
-                print("Non-zero grades count: \(nonZeroGrades.count) of \(elevationPolyline.grades.count)")
-                
-                // Sample some grades
-                if nonZeroGrades.count > 0 {
-                    let sampleCount = min(5, nonZeroGrades.count)
-                    print("Sample grades: \(nonZeroGrades.prefix(sampleCount))")
-                }
-            }
-            print("==============================")
-            
-            // Add to map
-            mapView.addOverlay(elevationPolyline)
-            
-            // Store the polyline for the coordinator
-            elevationPolylines.append(elevationPolyline)
-        }
-        
-        // Store elevation polylines in coordinator for renderer to use
-        context.coordinator.elevationPolylines = elevationPolylines
-        
-        // Set the visible region to show all tracks
-        if !allLocations.isEmpty {
-            // Add significant elevation markers (Garmin-like)
-            addElevationMarkers(to: mapView, routeLocations: allLocations)
-            
-            // Set the region to show all segments
-            MapView.setRegion(for: mapView, from: allLocations)
-            
-            // Add start and end annotations using the first and last segments
-            if let firstSegment = trackSegments.first, 
-               let lastSegment = trackSegments.last,
-               let firstLocation = firstSegment.locations.first,
-               let lastLocation = lastSegment.locations.last {
-                
-                let startPoint = MKPointAnnotation()
-                startPoint.coordinate = firstLocation.coordinate
-                startPoint.title = "Start"
-                
-                let endPoint = MKPointAnnotation()
-                endPoint.coordinate = lastLocation.coordinate
-                endPoint.title = "End"
-                
-                mapView.addAnnotations([startPoint, endPoint])
-            }
-            
-            // Add waypoint annotations
-            if !waypoints.isEmpty {
-                let waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
-                mapView.addAnnotations(waypointAnnotations)
-                print("Added \(waypointAnnotations.count) waypoint annotations to map")
-            }
-        }
-        
-        return mapView
-    }
-    
-    func updateNSView(_ mapView: MKMapView, context: Context) {
-        // Update map configuration if settings changed
-        #if swift(>=5.7)
-        if #available(macOS 13.0, *) {
-            mapView.preferredConfiguration = settings.mapStyle.mapConfiguration
-        } else {
-            mapView.mapType = settings.mapStyle.mapType
-        }
-        #else
-        mapView.mapType = settings.mapStyle.mapType
-        #endif
-        
-        // Always update when this method is called to ensure visibility changes are reflected
-        // This handles both segment count changes and visibility toggling
-        
-        // Get existing overlays before clearing
-        let existingOverlaysCount = mapView.overlays.count
-        
-        // Clear existing overlays and annotations
-        context.coordinator.clearOverlays(from: mapView)
-        mapView.removeAnnotations(mapView.annotations)
-        
-        // Skip if no segments or waypoints to show
-        if trackSegments.isEmpty && waypoints.isEmpty {
-            context.coordinator.elevationPolylines = []
-            return
-        }
-        
-        // Add each segment's polyline
-        var newElevationPolylines: [ElevationPolyline] = []
-        for segment in trackSegments {
-            let elevationPolyline = createElevationPolyline(from: segment.locations)
-            elevationPolyline.calculateGradeData(from: segment.locations)
-            mapView.addOverlay(elevationPolyline)
-            newElevationPolylines.append(elevationPolyline)
-        }
-        
-        // Update the coordinator's polylines
-        context.coordinator.elevationPolylines = newElevationPolylines
-        
-        // Collect all locations
-        let allLocations = trackSegments.flatMap { $0.locations }
-        
-        // Add waypoint annotations
-        var waypointAnnotations: [WaypointAnnotation] = []
-        if !waypoints.isEmpty {
-            waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
-            mapView.addAnnotations(waypointAnnotations)
-        }
-        
-        if !allLocations.isEmpty {
-            // Add elevation markers
-            addElevationMarkers(to: mapView, routeLocations: allLocations)
-            
-            // Add start and end annotations
-            if let firstSegment = trackSegments.first, 
-               let lastSegment = trackSegments.last,
-               let firstLocation = firstSegment.locations.first,
-               let lastLocation = lastSegment.locations.last {
-                
-                let startPoint = MKPointAnnotation()
-                startPoint.coordinate = firstLocation.coordinate
-                startPoint.title = "Start"
-                
-                let endPoint = MKPointAnnotation()
-                endPoint.coordinate = lastLocation.coordinate
-                endPoint.title = "End"
-                
-                mapView.addAnnotations([startPoint, endPoint])
-            }
-        }
-        
-        // Check if we need to center on a specific waypoint
-        if let center = centerCoordinate {
-            // Center the map on the specified coordinate with animation
-            let span = MKCoordinateSpan(
-                latitudeDelta: zoomLevel ?? 0.01,  // Default zoom if not specified
-                longitudeDelta: zoomLevel ?? 0.01
-            )
-            let region = MKCoordinateRegion(center: center, span: span)
-            mapView.setRegion(region, animated: true)
-            
-            // Highlight the selected waypoint if it exists
-            if let waypointAnnotation = waypointAnnotations.first(where: { 
-                $0.coordinate.latitude == center.latitude && 
-                $0.coordinate.longitude == center.longitude 
-            }) {
-                // Select the annotation to show its callout
-                mapView.selectAnnotation(waypointAnnotation, animated: true)
-            }
-        }
-        // Check if we need to span to show all content
-        else if spanAll {
-            // Combine all track locations and waypoints
-            var allLocations = trackSegments.flatMap { $0.locations }
-            
-            // Add waypoint locations if there are any
-            if !waypoints.isEmpty {
-                let waypointLocations = waypoints.map { 
-                    CLLocation(
-                        coordinate: $0.coordinate, 
-                        altitude: $0.elevation ?? 0,
-                        horizontalAccuracy: 10,
-                        verticalAccuracy: 10,
-                        timestamp: $0.timestamp ?? Date()
-                    )
-                }
-                allLocations.append(contentsOf: waypointLocations)
-            }
-            
-            if !allLocations.isEmpty {
-                // Set region to fit everything with animation
-                MapView.setRegion(for: mapView, from: allLocations)
-                
-                // Add a slight delay to ensure the map has time to process the region change
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-                    // Apply a slight animation to make the zoom more smooth
-                    NSAnimationContext.runAnimationGroup { context in
-                        context.duration = 0.3
-                        mapView.setRegion(mapView.region, animated: false)
-                    }
-                }
-            }
-        }
-        // Otherwise handle normal region setting
-        else {
-            // Adjust the map view region in these cases:
-            // 1. First time showing segments (existingOverlaysCount == 0)
-            // 2. When showing tracks after they were hidden (existingOverlaysCount != newElevationPolylines.count)
-            let shouldSetRegion = (!newElevationPolylines.isEmpty && 
-                                 (existingOverlaysCount == 0 || 
-                                  existingOverlaysCount != newElevationPolylines.count))
-                                 || (newElevationPolylines.isEmpty && !waypoints.isEmpty)
-            
-            if shouldSetRegion {
-                if !allLocations.isEmpty {
-                    // Set the map region to fit all visible segments
-                    MapView.setRegion(for: mapView, from: allLocations)
-                } else if !waypoints.isEmpty {
-                    // If we only have waypoints, set region to show all waypoints
-                    let waypointLocations = waypoints.map { 
-                        CLLocation(
-                            coordinate: $0.coordinate, 
-                            altitude: $0.elevation ?? 0,
-                            horizontalAccuracy: 10,
-                            verticalAccuracy: 10,
-                            timestamp: $0.timestamp ?? Date()
-                        )
-                    }
-                    MapView.setRegion(for: mapView, from: waypointLocations)
-                }
-            }
-        }
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-}
-#endif
-    
-#if os(iOS) || os(macOS)
-
 // Custom annotation for waypoints
 class WaypointAnnotation: NSObject, MKAnnotation {
     let waypoint: GPXWaypoint
     var _subtitle: String?
-    
+
     var coordinate: CLLocationCoordinate2D {
         return waypoint.coordinate
     }
-    
+
     var title: String? {
         return waypoint.name
     }
-    
+
     var subtitle: String? {
         // Return custom subtitle if set, otherwise fallback to waypoint description
         return _subtitle ?? waypoint.description
     }
-    
+
     init(waypoint: GPXWaypoint) {
         self.waypoint = waypoint
         super.init()
-        
+
         // Subtitle will be set in the mapView(_:viewFor:) method
         // We don't set default values here to allow the view to determine them
     }
 }
 
+// Custom annotation for elevation hover points
+class HoverPointAnnotation: NSObject, MKAnnotation {
+    let coordinate: CLLocationCoordinate2D
+    let elevation: Double
+    let useMetric: Bool
+
+    var title: String? {
+        return "Hover Point"
+    }
+
+    var subtitle: String? {
+        // Format elevation with proper units
+        let formattedElevation = useMetric
+            ? String(format: "%.0f m", elevation)
+            : String(format: "%.0f ft", elevation * 3.28084)
+
+        return "Elevation: \(formattedElevation)"
+    }
+
+    init(coordinate: CLLocationCoordinate2D, elevation: Double, useMetric: Bool) {
+        self.coordinate = coordinate
+        self.elevation = elevation
+        self.useMetric = useMetric
+        super.init()
+    }
+}
+
+// Shared MapView functionality
+protocol MapViewShared {
+    var trackSegments: [GPXTrackSegment] { get }
+    var waypoints: [GPXWaypoint] { get }
+    var centerCoordinate: CLLocationCoordinate2D? { get }
+    var zoomLevel: Double? { get }
+    var spanAll: Bool { get }
+    var hoveredPointIndex: Int? { get }
+}
+
 // Helper functions shared by both platforms
-extension MapView {
+extension MapViewShared {
     func createElevationPolyline(from locations: [CLLocation]) -> ElevationPolyline {
         let coordinates = locations.map { $0.coordinate }
         let elevations = locations.map { $0.altitude }
@@ -1336,7 +731,7 @@ extension MapView {
         }
     }
     
-    public static func setRegion(for mapView: MKMapView, from locations: [CLLocation]) {
+    static func setRegion(for mapView: MKMapView, from locations: [CLLocation]) {
         guard !locations.isEmpty else { return }
         
         // Find min/max coordinates
@@ -1375,14 +770,16 @@ extension MapView {
         mapView.setRegion(region, animated: false)
     }
 }
-#endif
-    
+
 // Shared Coordinator class that can be used with both UIViewRepresentable and NSViewRepresentable
 class Coordinator: NSObject, MKMapViewDelegate {
     var elevationPolylines: [ElevationPolyline] = []
     var isInitialLoad: Bool = false
     var initialLoadLocations: [CLLocation]? = nil
     var delayedZoomTimer: Timer? = nil
+    var lastHoverUpdateTime: Date = Date.distantPast // Track when we last updated hover point
+    var lastHoveredIndex: Int? = nil // Track the last hovered point index
+    let hoverThrottleInterval: TimeInterval = 0.25 // Throttle hover updates to 4 per second
     
     // Keep the single polyline property for backward compatibility
     var elevationPolyline: ElevationPolyline? {
@@ -1402,27 +799,6 @@ class Coordinator: NSObject, MKMapViewDelegate {
     func clearOverlays(from mapView: MKMapView) {
         mapView.removeOverlays(mapView.overlays)
     }
-    
-    // Perform a delayed zoom for initial load (iOS only)
-#if os(iOS)
-    func performDelayedZoom(mapView: MKMapView, locations: [CLLocation]) {
-        // Cancel any existing timer
-        delayedZoomTimer?.invalidate()
-        
-        // Setup a timer to perform the delayed zoom (500ms delay)
-        delayedZoomTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { [weak self] _ in
-            guard let self = self else { return }
-            
-            print("Performing delayed zoom after initial load")
-            
-            MapView.setRegion(for: mapView, from: locations)
-            
-            // Reset initial load flag
-            self.isInitialLoad = false
-            self.initialLoadLocations = nil
-        }
-    }
-#endif
     
     func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
         if let polyline = overlay as? ElevationPolyline {
@@ -1463,18 +839,53 @@ class Coordinator: NSObject, MKMapViewDelegate {
     
     func mapView(_ mapView: MKMapView, viewFor annotation: MKAnnotation) -> MKAnnotationView? {
         guard !annotation.isKind(of: MKUserLocation.self) else { return nil }
-        
+
+        // Special handling for hover point
+        if annotation.title == "Hover Point" {
+            let identifier = "HoverPin"
+            var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
+
+            if annotationView == nil {
+                annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
+                annotationView?.canShowCallout = true
+            } else {
+                annotationView?.annotation = annotation
+            }
+
+            if let markerView = annotationView as? MKMarkerAnnotationView {
+                // Use bright highlight color for hover point
+                markerView.markerTintColor = .systemRed
+
+#if os(iOS)
+                markerView.glyphImage = UIImage(systemName: "location.fill")
+                markerView.animatesWhenAdded = true
+#elseif os(macOS)
+                // Use SF Symbols on macOS 11+
+                if #available(macOS 11.0, *) {
+                    markerView.glyphImage = NSImage(systemSymbolName: "location.fill", accessibilityDescription: "Current Point")
+                } else {
+                    markerView.glyphText = "•"
+                }
+#endif
+
+                // Make hover point more prominent
+                markerView.displayPriority = .required
+            }
+
+            return annotationView
+        }
+
         // Use a different identifier for waypoints
         let identifier = annotation is WaypointAnnotation ? "WaypointPin" : "WorkoutPin"
         var annotationView = mapView.dequeueReusableAnnotationView(withIdentifier: identifier)
-        
+
         if annotationView == nil {
             annotationView = MKMarkerAnnotationView(annotation: annotation, reuseIdentifier: identifier)
             annotationView?.canShowCallout = true
         } else {
             annotationView?.annotation = annotation
         }
-        
+
         if let markerView = annotationView as? MKMarkerAnnotationView {
             // Handle waypoint annotations
             if let waypointAnnotation = annotation as? WaypointAnnotation {
@@ -1500,7 +911,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 button.bezelStyle = .rounded
                 annotationView?.rightCalloutAccessoryView = button
 #endif
-                
+
                 // Set subtitle based on waypoint description if available, otherwise use coordinates
                 if let description = waypointAnnotation.waypoint.description, !description.isEmpty {
                     waypointAnnotation._subtitle = description
@@ -1511,7 +922,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
                     let lon = String(format: "%.6f", coordinate.longitude)
                     waypointAnnotation._subtitle = "\(lat), \(lon)"
                 }
-                
+
                 // Use custom glyph based on waypoint symbol if available
                 if let symbol = waypointAnnotation.waypoint.symbol {
                     // Common GPX symbols can be mapped to SF Symbols
@@ -1534,7 +945,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
                     default:
                         iconName = "mappin"
                     }
-                    
+
 #if os(iOS)
                     markerView.glyphImage = UIImage(systemName: iconName)
 #elseif os(macOS)
@@ -1543,7 +954,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
                     }
 #endif
                 }
-                
+
                 // Set priority for waypoints (higher than elevation markers)
                 markerView.displayPriority = .defaultHigh
             }
@@ -1592,96 +1003,7 @@ class Coordinator: NSObject, MKMapViewDelegate {
                 markerView.displayPriority = .defaultLow // Lower priority to avoid clutter
             }
         }
-        
+
         return annotationView
     }
-    
-#if os(iOS)
-// Handle the callout accessory control tap (copy coordinates button)
-func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: UIControl) {
-    print("Copy button tapped in callout")
-    guard let annotation = view.annotation else {
-        print("No annotation found")
-        return
-    }
-    
-    // Format coordinates for clipboard
-    let coordinate = annotation.coordinate
-    let lat = String(format: "%.6f", coordinate.latitude)
-    let lon = String(format: "%.6f", coordinate.longitude)
-    let coordinateString = "\(lat), \(lon)"
-    
-    print("Copying coordinates: \(coordinateString)")
-    
-    // Copy to clipboard
-    UIPasteboard.general.string = coordinateString
-    
-    // Provide haptic feedback - this is reliable and doesn't require a view controller
-    let generator = UINotificationFeedbackGenerator()
-    generator.notificationOccurred(.success)
-    
-    // Try multiple methods to show visual feedback
-    print("Attempting to show feedback alert")
-    
-    // Method 1: Using the superview chain
-    if let viewController = view.superview?.findViewController() {
-        print("Found view controller via superview chain")
-        let alert = UIAlertController(
-            title: "Coordinates Copied",
-            message: "Location coordinates have been copied to clipboard",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        viewController.present(alert, animated: true)
-    }
-    // Method 2: Using the window's root view controller
-    else if let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
-            let rootVC = window.rootViewController {
-        print("Found root view controller via window")
-        let alert = UIAlertController(
-            title: "Coordinates Copied",
-            message: "Location coordinates have been copied to clipboard",
-            preferredStyle: .alert
-        )
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        
-        // Handle the case if root view controller is presenting something
-        var topVC = rootVC
-        while let presentedVC = topVC.presentedViewController {
-            topVC = presentedVC
-        }
-        
-        topVC.present(alert, animated: true)
-    } else {
-        print("Could not find a suitable view controller for showing alert")
-        // Just rely on haptic feedback in this case
-    }
-}
-#endif
-    
-#if os(macOS)
-// Handle the click for the copy button on macOS
-func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: NSControl) {
-    print("Copy button tapped in callout (macOS)")
-    guard let annotation = view.annotation else {
-        print("No annotation found")
-        return
-    }
-    
-    // Format coordinates for clipboard
-    let coordinate = annotation.coordinate
-    let lat = String(format: "%.6f", coordinate.latitude)
-    let lon = String(format: "%.6f", coordinate.longitude)
-    let coordinateString = "\(lat), \(lon)"
-    
-    print("Copying coordinates to macOS pasteboard: \(coordinateString)")
-    
-    // Copy to clipboard
-    NSPasteboard.general.clearContents()
-    NSPasteboard.general.setString(coordinateString, forType: .string)
-    
-    // Show feedback (could be expanded to use NSPopover or similar)
-    print("Successfully copied coordinates to clipboard")
-}
-#endif
 }
