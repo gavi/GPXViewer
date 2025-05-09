@@ -418,10 +418,13 @@ struct OptimizedElevationChartView: View {
                 }
 
                 // Only apply predictive offset if we haven't had many direction changes recently
-                // and we're moving at a reasonable speed
+                // and we're moving at a reasonable speed (less aggressive when zoomed)
+                let isZoomed = zoomRange != nil
+                let zoomModifier = isZoomed ? 0.5 : 1.0 // Less prediction when zoomed
+
                 if directionChangeCount < 2 && abs(dx) > 1 {
-                    // Use more conservative predictive offset to avoid oscillation
-                    let predictOffset = min(8.0, max(-8.0, dx * 1.5))
+                    // Use more conservative predictive offset when zoomed
+                    let predictOffset = min(8.0, max(-8.0, dx * 1.5 * zoomModifier))
                     locationToUse = CGPoint(x: location.x + predictOffset, y: location.y)
                 }
 
@@ -438,7 +441,12 @@ struct OptimizedElevationChartView: View {
             processHoverLocation(locationToUse) { index in
                 if let index = index {
                     // Prevent oscillation by enforcing consistent direction of point changes
-                    let shouldUpdate = self.selectedPointIndex == nil ||
+                    // Be more permissive when zoomed to improve responsiveness
+                    let isZoomed = self.zoomRange != nil
+
+                    // Always update when zoomed for better responsiveness, or apply direction logic otherwise
+                    let shouldUpdate = isZoomed ||
+                                      self.selectedPointIndex == nil ||
                                       self.lastPointIndex == nil ||
                                       (self.lastDirection > 0 && index > self.lastPointIndex!) ||
                                       (self.lastDirection < 0 && index < self.lastPointIndex!) ||
@@ -528,12 +536,12 @@ struct OptimizedElevationChartView: View {
     }
     
     var body: some View {
-        // Clear cache when zoom changes
+        // Clear cache when zoom changes, but preserve selected point
         let _ = zoomRange.map { _ in
             // This will run whenever zoomRange changes
             DispatchQueue.main.async {
+                // Only clear the cache, not the selected point
                 indexCache = [:]
-                selectedPointIndex = nil
             }
         }
 
@@ -578,19 +586,24 @@ struct OptimizedElevationChartView: View {
 
                 // Highlight selected point with a marker if available
                 if let selectedIndex = selectedPointIndex, let point = points.first(where: { $0.index == selectedIndex }) {
+                    // Use larger indicator when zoomed for better visibility
+                    let isZoomed = zoomRange != nil
+                    let whiteSize: CGFloat = isZoomed ? 200 : 150
+                    let redSize: CGFloat = isZoomed ? 150 : 100
+
                     PointMark(
                         x: .value("Distance", point.distance),
                         y: .value("Elevation", point.elevation)
                     )
                     .foregroundStyle(Color.white)
-                    .symbolSize(150)
+                    .symbolSize(whiteSize)
 
                     PointMark(
                         x: .value("Distance", point.distance),
                         y: .value("Elevation", point.elevation)
                     )
                     .foregroundStyle(Color.red)
-                    .symbolSize(100)
+                    .symbolSize(redSize)
                 }
 
                 // Show drag selection area
