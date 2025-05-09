@@ -41,9 +41,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
         
-        // Show welcome window if no documents are open
-        if NSApp.windows.isEmpty || (NSApp.windows.count == 1 && NSApp.windows.first?.title == "Open") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+        // Close any open panels and show welcome window
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // Close any automatic "Open" panels
+            if let openPanel = NSApp.windows.first(where: { $0.title == "Open" }) {
+                openPanel.close()
+                
+                // Show welcome window instead
+                self.showWelcomeWindow()
+            } else if NSApp.windows.isEmpty {
                 self.showWelcomeWindow()
             }
         }

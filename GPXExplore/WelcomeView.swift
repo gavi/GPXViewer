@@ -113,11 +113,18 @@ struct WelcomeView: View {
     }
     
     private func openFile(url: URL) {
+        // Add to recent files first to ensure it appears in history
+        recentFilesManager.addRecentFile(url, title: url.lastPathComponent)
+        
         #if os(macOS)
-        NSWorkspace.shared.open(url)
+        // Use the document controller to open the file in our app
+        NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { (document, documentWasAlreadyOpen, error) in
+            if let error = error {
+                print("Error opening document: \(error.localizedDescription)")
+            }
+        }
         #else
         // On iOS, we would handle this through the app's document system
-        recentFilesManager.addRecentFile(url, title: url.lastPathComponent)
         #endif
     }
 }
