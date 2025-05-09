@@ -241,6 +241,7 @@ struct ContentView: View {
                 }
             }
         }
+        #if os(iOS)
         .navigationTitle(documentTitle)
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
@@ -251,6 +252,7 @@ struct ContentView: View {
         .onChange(of: document.gpxFile?.filename) { _ in
             updateDocumentTitle()
         }
+        #endif
     }
 }
 
