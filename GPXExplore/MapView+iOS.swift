@@ -228,18 +228,32 @@ struct MapView: UIViewRepresentable, MapViewShared {
                     : String(format: "%.0f ft", elevation * 3.28084)
 
                 if let existingPoint = existingHoverAnnotation as? MKPointAnnotation {
-                    // Update existing annotation instead of removing/adding
-                    existingPoint.coordinate = hoverLocation.coordinate
-                    existingPoint.subtitle = "Elevation: \(formattedElevation)"
+                    // Check if the annotation would move a significant distance
+                    // This reduces map flicker by avoiding tiny position updates
+                    let existingCoord = existingPoint.coordinate
+                    let newCoord = hoverLocation.coordinate
 
-                    // The annotation view may need to be refreshed
-                    if let view = mapView.view(for: existingPoint) {
-                        view.setNeedsDisplay()
+                    // Calculate rough distance (not perfect but very fast)
+                    let latDiff = abs(existingCoord.latitude - newCoord.latitude)
+                    let lonDiff = abs(existingCoord.longitude - newCoord.longitude)
+                    let significantMove = (latDiff > 0.0001 || lonDiff > 0.0001)
+
+                    // Only update position if it changed significantly (reduces flicker)
+                    if significantMove {
+                        // Update existing annotation coordinate
+                        existingPoint.coordinate = newCoord
                     }
+
+                    // Always update subtitle to show current elevation, but only if changed
+                    let newSubtitle = "Elevation: \(formattedElevation)"
+                    if existingPoint.subtitle != newSubtitle {
+                        existingPoint.subtitle = newSubtitle
+                    }
+
+                    // Don't call setNeedsDisplay - this causes flickering
                 } else {
-                    // Need to add a new one
+                    // Need to add a new one - remove all existing hover annotations first
                     if !existingHoverAnnotations.isEmpty {
-                        // Remove old ones first
                         mapView.removeAnnotations(existingHoverAnnotations)
                     }
 
