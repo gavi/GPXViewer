@@ -489,53 +489,23 @@ struct OptimizedElevationChartView: View {
                     .fill(Color.clear)
                     .contentShape(Rectangle())
                     #if os(iOS) || os(visionOS)
-                    // iOS hover using drag gesture
+                    // iOS - Only use tap/hover with no drag zoom at all
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { value in
-                                // Detect if this should be a drag operation or hover
-                                if dragStart == nil {
-                                    dragStart = proxy.value(atX: value.startLocation.x, as: Double.self)
-                                }
+                                // Always use for hover only - no zoom
+                                selectedDistance = nil
 
-                                // Check for significant movement to start dragging
-                                if !isDragging && dragStart != nil {
-                                    // If we've moved more than a threshold, consider it a drag
-                                    if abs(value.translation.width) > 8 { // 8-point threshold
-                                        isDragging = true
-                                    } else {
-                                        // Otherwise, it's a hover/tap
-                                        if let (point, index) = findPointAt(position: value.location, proxy: proxy) {
-                                            // Update UI with point position
-                                            selectedDistance = point.distance
-                                            // Report the point's index directly to parent
-                                            onHover?(index)
-                                        }
-                                    }
-                                }
-
-                                // If we're in dragging mode, update the end position
-                                if isDragging {
-                                    if let xValue = proxy.value(atX: value.location.x, as: Double.self) {
-                                        dragEnd = xValue
-                                    }
+                                // Use drag location for hover effect
+                                if let (point, index) = findPointAt(position: value.location, proxy: proxy) {
+                                    // Update UI with point position
+                                    selectedDistance = point.distance
+                                    // Report the point's index directly to parent
+                                    onHover?(index)
                                 }
                             }
-                            .onEnded { value in
-                                if isDragging, let start = dragStart, let end = dragEnd {
-                                    // Only trigger zoom if selection has meaningful width
-                                    if abs(end - start) > 0.05 {
-                                        onDragSelection?(
-                                            min(start, end),
-                                            max(start, end)
-                                        )
-                                    }
-                                }
-
-                                // Reset state
-                                isDragging = false
-                                dragStart = nil
-                                dragEnd = nil
+                            .onEnded { _ in
+                                // Clear selection when drag ends
                                 selectedDistance = nil
                                 onHover?(nil)
                             }
@@ -601,22 +571,12 @@ struct OptimizedElevationChartView: View {
             }
         }
         // Double tap/click gesture is sufficient since we integrated drag into the overlay
-        // Double tap/click to reset zoom
+        // Double tap/click to reset zoom (works on both platforms)
         .gesture(
             TapGesture(count: 2)
                 .onEnded {
                     // Double tap resets zoom
                     onDragSelection?(0, 0)
-                }
-        )
-        // Pinch to reset zoom
-        .gesture(
-            MagnificationGesture()
-                .onEnded { value in
-                    // Reset zoom on pinch out (value > 1)
-                    if value > 1.2 {
-                        onDragSelection?(0, 0)
-                    }
                 }
         )
     }
