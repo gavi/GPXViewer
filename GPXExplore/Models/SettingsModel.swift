@@ -16,9 +16,17 @@ enum MapStyle: String, CaseIterable, Identifiable {
     case standard = "Standard"
     case satellite = "Satellite"
     case hybrid = "Hybrid"
-    
+
     var id: String { self.rawValue }
-    
+
+    var iconName: String {
+        switch self {
+        case .standard: return "map"
+        case .satellite: return "globe"
+        case .hybrid: return "map.fill"
+        }
+    }
+
     #if swift(>=5.7) && canImport(MapKit) && !targetEnvironment(macCatalyst)
     @available(iOS 16.0, *)
     var mapConfiguration: MKMapConfiguration {
@@ -29,7 +37,7 @@ enum MapStyle: String, CaseIterable, Identifiable {
         }
     }
     #endif
-    
+
     var mapType: MKMapType {
         switch self {
         case .standard: return .standard
@@ -86,6 +94,12 @@ class SettingsModel: ObservableObject {
             UserDefaults.standard.set(defaultShowElevationOverlay, forKey: "defaultShowElevationOverlay")
         }
     }
+
+    @Published var defaultShowRouteInfoOverlay: Bool {
+        didSet {
+            UserDefaults.standard.set(defaultShowRouteInfoOverlay, forKey: "defaultShowRouteInfoOverlay")
+        }
+    }
     
     @Published var chartDataDensity: Double {
         didSet {
@@ -131,6 +145,9 @@ class SettingsModel: ObservableObject {
         
         // Initialize default elevation overlay visibility
         self.defaultShowElevationOverlay = UserDefaults.standard.bool(forKey: "defaultShowElevationOverlay", defaultValue: false)
+
+        // Initialize default route info overlay visibility
+        self.defaultShowRouteInfoOverlay = UserDefaults.standard.bool(forKey: "defaultShowRouteInfoOverlay", defaultValue: true)
         
         // Initialize track line width with a default of 4 and bounds of 2-10
         let lineWidth = UserDefaults.standard.double(forKey: "trackLineWidth")

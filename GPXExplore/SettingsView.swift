@@ -78,8 +78,16 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 4) {
                             Toggle("Show Elevation Chart by Default", isOn: $settings.defaultShowElevationOverlay)
                                 .padding(.vertical, 4)
-                            
+
                             Text("Controls whether the elevation chart overlay appears by default when opening GPX files")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+
+                            Toggle("Show Route Info by Default", isOn: $settings.defaultShowRouteInfoOverlay)
+                                .padding(.vertical, 4)
+
+                            Text("Controls whether the route information overlay appears by default when opening GPX files")
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                                 .fixedSize(horizontal: false, vertical: true)
@@ -177,8 +185,16 @@ struct SettingsView: View {
                 
                 Toggle("Show Elevation Chart by Default", isOn: $settings.defaultShowElevationOverlay)
                     .padding(.vertical, 4)
-                
+
                 Text("Controls whether the elevation chart overlay appears by default when opening GPX files")
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 8)
+
+                Toggle("Show Route Info by Default", isOn: $settings.defaultShowRouteInfoOverlay)
+                    .padding(.vertical, 4)
+
+                Text("Controls whether the route information overlay appears by default when opening GPX files")
                     .font(.caption)
                     .foregroundColor(.secondary)
                     .padding(.bottom, 8)

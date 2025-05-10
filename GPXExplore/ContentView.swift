@@ -16,6 +16,7 @@ struct ContentView: View {
     @State private var selectedWaypointCoordinate: CLLocationCoordinate2D? = nil
     @State private var triggerSpanView: Bool = false
     @State private var isElevationOverlayVisible: Bool = false
+    @State private var isRouteInfoOverlayVisible: Bool = true
     @State private var chartHoverPointIndex: Int? = nil // Index in trackLocations for chart hover
     @State private var chartZoomRange: ClosedRange<Double>? = nil // Current zoom range for chart
         
@@ -98,8 +99,9 @@ struct ContentView: View {
                 Color.clear
                     .onAppear {
                         updateFromDocument()
-                        // Initialize elevation overlay visibility from settings
+                        // Initialize overlay visibility from settings
                         isElevationOverlayVisible = settings.defaultShowElevationOverlay
+                        isRouteInfoOverlayVisible = settings.defaultShowRouteInfoOverlay
                     }
                     .onChange(of: document.trackSegments.count) { _ in
                         updateFromDocument()
@@ -141,11 +143,15 @@ struct ContentView: View {
                             
                             VStack {
                                 // Route info at the top
-                                RouteInfoOverlay(trackSegments: visibleTrackSegments, workout: visibleWorkout)
-                                    .environmentObject(settings)
-                                
+                                if isRouteInfoOverlayVisible {
+                                    RouteInfoOverlay(trackSegments: visibleTrackSegments, workout: visibleWorkout)
+                                        .environmentObject(settings)
+                                        .transition(.move(edge: .top))
+                                        .animation(.easeInOut, value: isRouteInfoOverlayVisible)
+                                }
+
                                 Spacer()
-                                
+
                                 // Elevation overlay at the bottom
                                 if isElevationOverlayVisible && !visibleTrackSegments.isEmpty {
                                     ElevationOverlay(
@@ -164,14 +170,37 @@ struct ContentView: View {
                     .toolbar(.visible, for: .navigationBar)
                     #endif
                     .toolbar {
-                        // Map style picker
+                        // Map style menu
                         ToolbarItem(placement: .automatic) {
-                            Picker("Map Style", selection: $settings.mapStyle) {
+                            Menu {
                                 ForEach(MapStyle.allCases) { style in
-                                    Text(style.rawValue).tag(style)
+                                    Button {
+                                        settings.mapStyle = style
+                                    } label: {
+                                        Label(style.rawValue, systemImage: style.iconName)
+                                    }
                                 }
+                            } label: {
+                                Label("Map Style", systemImage: "map")
                             }
-                            .pickerStyle(.menu)
+                        }
+                        
+                        // Elevation overlay toggle
+                        ToolbarItem(placement: .automatic) {
+                            Button(action: {
+                                isElevationOverlayVisible.toggle()
+                            }) {
+                                Label("Elevation", systemImage: "mountain.2")
+                            }
+                        }
+
+                        // Route info overlay toggle
+                        ToolbarItem(placement: .automatic) {
+                            Button(action: {
+                                isRouteInfoOverlayVisible.toggle()
+                            }) {
+                                Label("Route Info", systemImage: "info.circle")
+                            }
                         }
                         
                         // Settings button
@@ -195,14 +224,7 @@ struct ContentView: View {
                             }
                         }
                         
-                        // Elevation overlay toggle
-                        ToolbarItem(placement: .automatic) {
-                            Button(action: {
-                                isElevationOverlayVisible.toggle()
-                            }) {
-                                Label("Elevation", systemImage: "mountain.2")
-                            }
-                        }
+                        
                         
                         // Tracks drawer toggle
                         ToolbarItem(placement: .automatic) {
