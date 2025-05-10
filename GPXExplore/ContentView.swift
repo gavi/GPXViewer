@@ -16,6 +16,8 @@ struct ContentView: View {
     @State private var selectedWaypointCoordinate: CLLocationCoordinate2D? = nil
     @State private var triggerSpanView: Bool = false
     @State private var isElevationOverlayVisible: Bool = false
+    @State private var chartHoverPointIndex: Int? = nil // Index in trackLocations for chart hover
+    @State private var chartZoomRange: ClosedRange<Double>? = nil // Current zoom range for chart
         
     private func updateDocumentTitle() {
         // Update title based on the GPX filename
@@ -113,7 +115,8 @@ struct ContentView: View {
                             waypoints: waypointsVisible ? document.waypoints : [],
                             centerCoordinate: selectedWaypointCoordinate,
                             zoomLevel: 0.005, // Closer zoom when centering on a waypoint
-                            spanAll: triggerSpanView // Trigger to span view to all visible content
+                            spanAll: triggerSpanView, // Trigger to span view to all visible content
+                            hoveredPointIndex: chartHoverPointIndex // Pass the currently hovered point index
                         )
                         .environmentObject(settings)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -124,6 +127,11 @@ struct ContentView: View {
                                     triggerSpanView = false
                                 }
                             }
+                        }
+                        // Reset chart hover when user selects a waypoint
+                        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WaypointSelected"))) { _ in
+                            chartHoverPointIndex = nil
+                            chartZoomRange = nil
                         }
                         
                         // Overlay with route information
@@ -140,10 +148,14 @@ struct ContentView: View {
                                 
                                 // Elevation overlay at the bottom
                                 if isElevationOverlayVisible && !visibleTrackSegments.isEmpty {
-                                    ElevationOverlay(trackSegments: visibleTrackSegments)
-                                        .environmentObject(settings)
-                                        .transition(.move(edge: .bottom))
-                                        .animation(.easeInOut, value: isElevationOverlayVisible)
+                                    ElevationOverlay(
+                                        trackSegments: visibleTrackSegments,
+                                        selectedPointIndex: $chartHoverPointIndex,
+                                        zoomRange: $chartZoomRange
+                                    )
+                                    .environmentObject(settings)
+                                    .transition(.move(edge: .bottom))
+                                    .animation(.easeInOut, value: isElevationOverlayVisible)
                                 }
                             }
                         }
@@ -224,6 +236,8 @@ struct ContentView: View {
                             onWaypointSelected: { coordinate in
                                 // Update the state to center on this waypoint
                                 selectedWaypointCoordinate = coordinate
+                                // Post notification that a waypoint was selected
+                                NotificationCenter.default.post(name: Notification.Name("WaypointSelected"), object: nil)
                             }
                         )
                         .environmentObject(settings)
