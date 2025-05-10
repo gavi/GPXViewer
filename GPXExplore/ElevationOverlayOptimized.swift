@@ -292,494 +292,324 @@ struct OptimizedElevationChartView: View {
     var onHover: ((Int?) -> Void)? = nil
     var onDragSelection: ((Double, Double) -> Void)? = nil
     var zoomRange: ClosedRange<Double>? = nil
-    
-    // State for gesture handling
-    @State private var selectedPointIndex: Int? = nil
+
+    // State for chart selection and interaction
+    @State private var selectedDistance: Double? = nil
     @State private var isDragging: Bool = false
-    @State private var dragStart: CGFloat? = nil
-    @State private var dragEnd: CGFloat? = nil
-    @State private var chartBounds: CGRect = .zero
-    
-    // State for optimizing hover performance
-    @State private var lastHoverProcessTime: Date = Date.distantPast
-    @State private var lastHoverLocation: CGPoint = .zero
-    @State private var isProcessingHover: Bool = false
-    @State private var pendingHoverLocation: CGPoint? = nil
-    @State private var indexCache: [CGFloat: Int] = [:] // Cache to store x position to index mapping
-    let hoverThrottleInterval: TimeInterval = 0.02 // 20ms for better responsiveness
-    @State private var pointsArray: [Int: Int] = [:] // Cache for quick point lookups
-    
-    // Efficient helper function for hover processing with enhanced consistency
-    private func processHoverLocation(_ location: CGPoint, completion: @escaping (Int?) -> Void) {
-        // Use coarser cache key (5px precision) to ensure consistent point selection
-        // within small mouse movements
-        let roundedX = floor(location.x / 5) * 5
+    @State private var dragStart: Double? = nil
+    @State private var dragEnd: Double? = nil
 
-        // Fast path: check cache first - if we already processed a nearby position, use cached result
-        if let cachedIndex = indexCache[roundedX] {
-            completion(cachedIndex)
-            return
-        }
-
-        // Background processing for better UI responsiveness
-        DispatchQueue.global(qos: .userInteractive).async {
-            guard !self.points.isEmpty, self.chartBounds.width > 0 else {
-                DispatchQueue.main.async { completion(nil) }
-                return
-            }
-
-            // Get min and max distances from points
-            let defaultMinDistance = self.points.first?.distance ?? 0
-            let defaultMaxDistance = self.points.last?.distance ?? 0
-
-            // Get the actual visible distances based on zoom range
-            let minDistance = self.zoomRange?.lowerBound ?? defaultMinDistance
-            let maxDistance = self.zoomRange?.upperBound ?? defaultMaxDistance
-
-            // Convert x position to distance, respecting the current zoom level
-            let relativeX = (location.x - self.chartBounds.minX) / self.chartBounds.width
-            let distance = minDistance + relativeX * (maxDistance - minDistance)
-
-            // Avoid finding points by using direct positional mapping for large datasets
-            // This creates more consistent hover behavior (equal x-spacing between hover points)
-            if self.points.count > 100 && self.zoomRange == nil {
-                // Use direct index calculation only when not zoomed
-                let pointCount = self.points.count
-                let scaledIndex = min(pointCount - 1, max(0, Int(relativeX * Double(pointCount))))
-
-                let result = self.points[scaledIndex].index
-                DispatchQueue.main.async {
-                    // Update cache on main thread
-                    self.indexCache[roundedX] = result
-                    completion(result)
-                }
-                return
-            }
-
-            // For smaller datasets or when zoomed, use exact distance calculation
-            var closestIndex = 0
-            var closestDistance = Double.greatestFiniteMagnitude
-
-            for (i, point) in self.points.enumerated() {
-                let currentDistance = abs(point.distance - distance)
-                if currentDistance < closestDistance {
-                    closestDistance = currentDistance
-                    closestIndex = i
-                }
-            }
-
-            // Cache and return result
-            let result = self.points[closestIndex].index
-            DispatchQueue.main.async {
-                // Update cache with a range of nearby x values for stability
-                for i in -2...2 {
-                    self.indexCache[roundedX + CGFloat(i*5)] = result
-                }
-                completion(result)
-            }
-        }
-    }
-    
-    // Direction tracking for consistent hover movement
-    @State private var lastDirection: CGFloat = 0
-    @State private var directionChangeCount: Int = 0
-    @State private var lastPointIndex: Int? = nil
-
-    // Helper method for handling hover events that supports background processing
-    // with direction consistency to prevent back-and-forth jitter
-    private func handleHover(at location: CGPoint) {
-        let now = Date()
-        let timeSinceLastUpdate = now.timeIntervalSince(lastHoverProcessTime)
-
-        // If we're already processing a hover, store this as pending for later
-        if isProcessingHover {
-            pendingHoverLocation = location
-            return
-        }
-
-        // Process if sufficient time has passed
-        if timeSinceLastUpdate >= hoverThrottleInterval {
-            // Calculate direction of movement
-            var currentDirection: CGFloat = 0
-            var locationToUse = location
-
-            if lastHoverLocation != .zero {
-                let dx = location.x - lastHoverLocation.x
-                currentDirection = dx
-
-                // Check for direction changes - avoid applying prediction if direction is inconsistent
-                // to prevent oscillation between points
-                if lastDirection * currentDirection < 0 {
-                    // Direction changed, increment counter
-                    directionChangeCount += 1
-                } else if abs(dx) > 3 {
-                    // Moving consistently in one direction at reasonable speed, reset counter
-                    directionChangeCount = 0
-                }
-
-                // Only apply predictive offset if we haven't had many direction changes recently
-                // and we're moving at a reasonable speed (less aggressive when zoomed)
-                let isZoomed = zoomRange != nil
-                let zoomModifier = isZoomed ? 0.5 : 1.0 // Less prediction when zoomed
-
-                if directionChangeCount < 2 && abs(dx) > 1 {
-                    // Use more conservative predictive offset when zoomed
-                    let predictOffset = min(8.0, max(-8.0, dx * 1.5 * zoomModifier))
-                    locationToUse = CGPoint(x: location.x + predictOffset, y: location.y)
-                }
-
-                // Update last direction
-                if abs(dx) > 1 {
-                    lastDirection = currentDirection
-                }
-            }
-
-            // Set processing flag to avoid concurrent processing
-            isProcessingHover = true
-
-            // Use background processing
-            processHoverLocation(locationToUse) { index in
-                if let index = index {
-                    // Prevent oscillation by enforcing consistent direction of point changes
-                    // Be more permissive when zoomed to improve responsiveness
-                    let isZoomed = self.zoomRange != nil
-
-                    // Always update when zoomed for better responsiveness, or apply direction logic otherwise
-                    let shouldUpdate = isZoomed ||
-                                      self.selectedPointIndex == nil ||
-                                      self.lastPointIndex == nil ||
-                                      (self.lastDirection > 0 && index > self.lastPointIndex!) ||
-                                      (self.lastDirection < 0 && index < self.lastPointIndex!) ||
-                                      self.directionChangeCount >= 3 // Allow changes if we can't detect clear direction
-
-                    if shouldUpdate && self.selectedPointIndex != index {
-                        self.selectedPointIndex = index
-                        self.lastPointIndex = index
-                        self.onHover?(index)
-                    }
-                }
-
-                // Update tracking variables
-                self.lastHoverProcessTime = now
-                self.lastHoverLocation = location
-                self.isProcessingHover = false
-
-                // Process any pending hover that came in while processing
-                if let pendingLocation = self.pendingHoverLocation {
-                    self.pendingHoverLocation = nil
-                    // Process the pending location on the next run loop
-                    DispatchQueue.main.async {
-                        self.handleHover(at: pendingLocation)
-                    }
-                }
-            }
-        }
-    }
-    
-    // Legacy function for backward compatibility - fallback only
-    private func chartPositionFromGesture(_ location: CGPoint) -> (distance: Double, index: Int)? {
-        guard !points.isEmpty, chartBounds.width > 0 else { return nil }
-
-        // Get min and max distances from points
-        let defaultMinDistance = points.first?.distance ?? 0
-        let defaultMaxDistance = points.last?.distance ?? 0
-
-        // Use zoom range if available
-        let minDistance = zoomRange?.lowerBound ?? defaultMinDistance
-        let maxDistance = zoomRange?.upperBound ?? defaultMaxDistance
-
-        // Convert x position to distance, respecting the current zoom level
-        let relativeX = (location.x - chartBounds.minX) / chartBounds.width
-        let distance = minDistance + relativeX * (maxDistance - minDistance)
-
-        // First check cache
-        let roundedX = round(location.x)
-        if let cachedIndex = indexCache[roundedX] {
-            return (distance, cachedIndex)
-        }
-
-        // When zoomed, we need to find the nearest point by distance
-        if zoomRange != nil {
-            var closestIndex = 0
-            var closestDiff = Double.greatestFiniteMagnitude
-
-            for (i, point) in points.enumerated() {
-                let diff = abs(point.distance - distance)
-                if diff < closestDiff {
-                    closestDiff = diff
-                    closestIndex = i
-                }
-            }
-
-            return (distance, points[closestIndex].index)
-        }
-
-        // Fallback to simple predicted index if not zoomed
-        let pointCount = points.count
-        let predictedIndex = Int(relativeX * Double(pointCount - 1))
-        let safeIndex = max(0, min(predictedIndex, pointCount - 1))
-
-        return (distance, points[safeIndex].index)
-    }
-    
-    // Get domain for charts based on zoom
-    private var chartDomain: ClosedRange<Double>? {
-        if let zoomRange = zoomRange {
-            return zoomRange
-        }
-        return nil
-    }
-    
     // Get y scale domain
     private var yScaleDomain: ClosedRange<Double> {
         (minValue * 0.95)...(maxValue * 1.05)
     }
-    
-    var body: some View {
-        // Clear cache when zoom changes, but preserve selected point
-        let _ = zoomRange.map { _ in
-            // This will run whenever zoomRange changes
-            DispatchQueue.main.async {
-                // Only clear the cache, not the selected point
-                indexCache = [:]
+
+    // Performance optimization state
+    @State private var lastHoverTime: Date = Date.distantPast
+    @State private var throttleInterval: TimeInterval = 0.05 // 50ms throttle
+    @State private var lastHoverLocation: CGPoint = .zero
+
+    // Find point at a chart position using ChartProxy (directly gets the index)
+    private func findPointAt(position: CGPoint, proxy: ChartProxy) -> (point: ElevationOverlay.ElevationPoint, index: Int)? {
+        // Throttle hover events for large datasets
+        let now = Date()
+        if points.count > 1000 && // Only throttle for large datasets
+           now.timeIntervalSince(lastHoverTime) < throttleInterval &&
+           abs(position.x - lastHoverLocation.x) < 5.0 {
+            // Skip processing if we just processed a nearby point recently
+            return nil
+        }
+
+        // Update hover tracking
+        lastHoverTime = now
+        lastHoverLocation = position
+
+        // Convert x-position to distance value using ChartProxy
+        guard let distance = proxy.value(atX: position.x, as: Double.self),
+              !points.isEmpty else { return nil }
+
+        // Fast approximation for very large datasets (10000+ points)
+        if points.count > 5000 && !isDragging {
+            // O(1) direct index calculation for extremely large datasets
+            let totalDistance = points.last!.distance - points.first!.distance
+            let normalizedPosition = min(1.0, max(0.0,
+                                           (distance - points.first!.distance) / totalDistance))
+            let index = min(points.count - 1, max(0, Int(normalizedPosition * Double(points.count - 1))))
+            return (points[index], points[index].index)
+        }
+
+        // Binary search to find the closest point to this distance
+        // This is much more efficient than linear search for large datasets
+
+        // Handle edge cases
+        if points.count <= 1 {
+            return points.isEmpty ? nil : (points[0], points[0].index)
+        }
+
+        if distance <= points.first!.distance {
+            return (points.first!, points.first!.index)
+        }
+
+        if distance >= points.last!.distance {
+            return (points.last!, points.last!.index)
+        }
+
+        // Binary search for the two points that bracket this distance
+        var low = 0
+        var high = points.count - 1
+
+        while high - low > 1 {
+            let mid = (low + high) / 2
+            if points[mid].distance < distance {
+                low = mid
+            } else {
+                high = mid
             }
         }
 
-        ZStack {
-            // Base chart
-            Chart {
-                // Use ForEach with individual points for Swift Charts compatibility
-                ForEach(points) { point in
-                    // Area under the line
-                    AreaMark(
-                        x: .value("Distance", point.distance),
-                        y: .value("Elevation", point.elevation)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [
-                                Color.blue.opacity(0.3),
-                                Color.green.opacity(0.3),
-                                Color.red.opacity(0.3)
-                            ],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                }
+        // Determine which of the two bracketing points is closer
+        let distLow = abs(points[low].distance - distance)
+        let distHigh = abs(points[high].distance - distance)
 
-                // Use ForEach for line too to avoid compiler complexity
-                ForEach(points) { point in
-                    LineMark(
-                        x: .value("Distance", point.distance),
-                        y: .value("Elevation", point.elevation)
-                    )
-                    .foregroundStyle(
-                        LinearGradient(
-                            colors: [Color.blue, Color.green, Color.red],
-                            startPoint: .bottom,
-                            endPoint: .top
-                        )
-                    )
-                    .lineStyle(StrokeStyle(lineWidth: 2))
-                }
+        return distLow < distHigh
+            ? (points[low], points[low].index)
+            : (points[high], points[high].index)
+    }
 
-                // Highlight selected point with a marker if available
-                if let selectedIndex = selectedPointIndex, let point = points.first(where: { $0.index == selectedIndex }) {
-                    // Use larger indicator when zoomed for better visibility
-                    let isZoomed = zoomRange != nil
-                    let whiteSize: CGFloat = isZoomed ? 200 : 150
-                    let redSize: CGFloat = isZoomed ? 150 : 100
+    var body: some View {
+        Chart {
+            // Area under the line
+            ForEach(points) { point in
+                AreaMark(
+                    x: .value("Distance", point.distance),
+                    y: .value("Elevation", point.elevation)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [
+                            Color.blue.opacity(0.3),
+                            Color.green.opacity(0.3),
+                            Color.red.opacity(0.3)
+                        ],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+            }
 
+            // The elevation line
+            ForEach(points) { point in
+                LineMark(
+                    x: .value("Distance", point.distance),
+                    y: .value("Elevation", point.elevation)
+                )
+                .foregroundStyle(
+                    LinearGradient(
+                        colors: [Color.blue, Color.green, Color.red],
+                        startPoint: .bottom,
+                        endPoint: .top
+                    )
+                )
+                .lineStyle(StrokeStyle(lineWidth: 2))
+            }
+
+            // Highlight selected point with a marker
+            if let distance = selectedDistance {
+                // Find the point for the UI - already optimized since we're only doing this for display
+                if let selectedPoint = points.first(where: {
+                    // Use approximate equality to handle small floating point differences
+                    abs($0.distance - distance) < 0.00001
+                }) ?? points.first(where: { $0.distance > distance }) {
+
+                    // Selection indicator rule
+                    RuleMark(
+                        x: .value("Selected", selectedPoint.distance)
+                    )
+                    .foregroundStyle(Color.gray.opacity(0.3))
+                    .zIndex(-1)
+
+                    // Show point marker
                     PointMark(
-                        x: .value("Distance", point.distance),
-                        y: .value("Elevation", point.elevation)
+                        x: .value("Distance", selectedPoint.distance),
+                        y: .value("Elevation", selectedPoint.elevation)
                     )
                     .foregroundStyle(Color.white)
-                    .symbolSize(whiteSize)
+                    .symbolSize(150)
 
                     PointMark(
-                        x: .value("Distance", point.distance),
-                        y: .value("Elevation", point.elevation)
+                        x: .value("Distance", selectedPoint.distance),
+                        y: .value("Elevation", selectedPoint.elevation)
                     )
                     .foregroundStyle(Color.red)
-                    .symbolSize(redSize)
-                }
-
-                // Show drag selection area
-                if isDragging, let start = dragStart, let end = dragEnd,
-                   let (startDistance, _) = chartPositionFromGesture(CGPoint(x: start, y: 0)),
-                   let (endDistance, _) = chartPositionFromGesture(CGPoint(x: end, y: 0)) {
-
-                    RectangleMark(
-                        xStart: .value("Start", min(startDistance, endDistance)),
-                        xEnd: .value("End", max(startDistance, endDistance)),
-                        yStart: .value("Bottom", minValue * 0.95),
-                        yEnd: .value("Top", maxValue * 1.05)
-                    )
-                    .foregroundStyle(Color.blue.opacity(0.2))
+                    .symbolSize(100)
                 }
             }
-            .chartYScale(domain: yScaleDomain)
-            .chartXScale(domain: chartDomain ?? (points.first?.distance ?? 0)...(points.last?.distance ?? 1))
-            .chartYAxis {
-                AxisMarks(position: .leading) { value in
-                    AxisGridLine()
-                    AxisTick()
-                    AxisValueLabel {
-                        if let yValue = value.as(Double.self) {
-                            Text("\(Int(yValue)) \(yUnit)")
-                                .font(.caption2)
-                        }
+
+            // Show drag selection area
+            if isDragging, let start = dragStart, let end = dragEnd {
+                RectangleMark(
+                    xStart: .value("Start", min(start, end)),
+                    xEnd: .value("End", max(start, end)),
+                    yStart: .value("Bottom", minValue * 0.95),
+                    yEnd: .value("Top", maxValue * 1.05)
+                )
+                .foregroundStyle(Color.blue.opacity(0.2))
+            }
+        }
+        .chartYScale(domain: yScaleDomain)
+        .chartXScale(domain: zoomRange ?? (points.first?.distance ?? 0)...(points.last?.distance ?? 1))
+        .chartYAxis {
+            AxisMarks(position: .leading) { value in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel {
+                    if let yValue = value.as(Double.self) {
+                        Text("\(Int(yValue)) \(yUnit)")
+                            .font(.caption2)
                     }
                 }
             }
-            .chartXAxis {
-                AxisMarks(position: .bottom) { value in
-                    AxisGridLine()
-                    AxisTick()
-                    AxisValueLabel {
-                        if let xValue = value.as(Double.self) {
-                            Text(String(format: "%.1f \(xUnit)", xValue))
-                                .font(.caption2)
-                        }
+        }
+        .chartXAxis {
+            AxisMarks(position: .bottom) { value in
+                AxisGridLine()
+                AxisTick()
+                AxisValueLabel {
+                    if let xValue = value.as(Double.self) {
+                        Text(String(format: "%.1f \(xUnit)", xValue))
+                            .font(.caption2)
                     }
                 }
             }
-            .chartOverlay { proxy in
-                GeometryReader { geometry in
-                    // Save chart bounds for coordinate conversion
-                    let bounds = geometry.frame(in: .local)
-                    Color.clear
-                        .onAppear {
-                            chartBounds = bounds
-                            // Build an index for fast point lookups
-                            for (i, point) in points.enumerated() {
-                                pointsArray[point.index] = i
-                            }
-                        }
-                        .onChange(of: bounds) { newBounds in
-                            chartBounds = newBounds
-                            // Clear cache when bounds change
-                            indexCache = [:]
-                        }
+        }
+        // Use chart overlay for more precise hover control
+        .chartOverlay { proxy in
+            GeometryReader { geometry in
+                Rectangle()
+                    .fill(Color.clear)
+                    .contentShape(Rectangle())
+                    #if os(iOS) || os(visionOS)
+                    // iOS hover using drag gesture
+                    .gesture(
+                        DragGesture(minimumDistance: 0)
+                            .onChanged { value in
+                                // Detect if this should be a drag operation or hover
+                                if dragStart == nil {
+                                    dragStart = proxy.value(atX: value.startLocation.x, as: Double.self)
+                                }
 
-                    // Overlay for gesture handling
-                    Rectangle()
-                        .fill(Color.clear)
-                        .contentShape(Rectangle())
-                        #if os(iOS) || os(visionOS)
-                        // iOS/iPadOS hover using drag gesture with location and background processing
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { value in
-                                    if !isDragging && (dragStart == nil || abs(value.location.x - dragStart!) < 3) {
-                                        // Process hover event in background with optimizations
-                                        handleHover(at: value.location)
-
-                                        // Start drag if we've moved more than initial touch
-                                        if dragStart == nil {
-                                            dragStart = value.location.x
-                                        }
-                                    } else {
-                                        // We're in drag mode for zoom selection
+                                // Check for significant movement to start dragging
+                                if !isDragging && dragStart != nil {
+                                    // If we've moved more than a threshold, consider it a drag
+                                    if abs(value.translation.width) > 8 { // 8-point threshold
                                         isDragging = true
-                                        dragEnd = value.location.x
-                                    }
-                                }
-                                .onEnded { value in
-                                    // Handle end of gesture
-                                    if isDragging, let start = dragStart, let end = dragEnd,
-                                       let (startDistance, _) = chartPositionFromGesture(CGPoint(x: start, y: 0)),
-                                       let (endDistance, _) = chartPositionFromGesture(CGPoint(x: end, y: 0)) {
-
-                                        // Only trigger zoom if selection has meaningful width
-                                        if abs(end - start) > 10 {
-                                            onDragSelection?(
-                                                min(startDistance, endDistance),
-                                                max(startDistance, endDistance)
-                                            )
+                                    } else {
+                                        // Otherwise, it's a hover/tap
+                                        if let (point, index) = findPointAt(position: value.location, proxy: proxy) {
+                                            // Update UI with point position
+                                            selectedDistance = point.distance
+                                            // Report the point's index directly to parent
+                                            onHover?(index)
                                         }
                                     }
+                                }
 
-                                    // Reset drag state
-                                    isDragging = false
-                                    dragStart = nil
-                                    dragEnd = nil
-                                }
-                        )
-                        // Additional tap gesture to reset zoom
-                        .gesture(
-                            TapGesture(count: 2)
-                                .onEnded {
-                                    // Double tap resets zoom
-                                    onDragSelection?(0, 0)
-                                }
-                        )
-                        #elseif os(macOS)
-                        // macOS hover uses onHover
-                        .onHover { hovering in
-                            if !hovering {
-                                selectedPointIndex = nil
-                                onHover?(nil)
-                                lastHoverLocation = .zero
-                            }
-                        }
-                        .onContinuousHover { phase in
-                            switch phase {
-                            case .active(let location):
-                                if !isDragging {
-                                    // Process hover event in background with optimizations
-                                    handleHover(at: location)
-                                }
-                            case .ended:
-                                if !isDragging {
-                                    selectedPointIndex = nil
-                                    onHover?(nil)
-                                    lastHoverLocation = .zero
-                                }
-                            }
-                        }
-                        // Drag gesture for selection
-                        .gesture(
-                            DragGesture(minimumDistance: 5)
-                                .onChanged { value in
-                                    isDragging = true
-                                    if dragStart == nil {
-                                        dragStart = value.startLocation.x
+                                // If we're in dragging mode, update the end position
+                                if isDragging {
+                                    if let xValue = proxy.value(atX: value.location.x, as: Double.self) {
+                                        dragEnd = xValue
                                     }
-                                    dragEnd = value.location.x
                                 }
-                                .onEnded { value in
-                                    if let start = dragStart, let end = dragEnd,
-                                       let (startDistance, _) = chartPositionFromGesture(CGPoint(x: start, y: 0)),
-                                       let (endDistance, _) = chartPositionFromGesture(CGPoint(x: end, y: 0)) {
-
+                            }
+                            .onEnded { value in
+                                if isDragging, let start = dragStart, let end = dragEnd {
+                                    // Only trigger zoom if selection has meaningful width
+                                    if abs(end - start) > 0.05 {
                                         onDragSelection?(
-                                            min(startDistance, endDistance),
-                                            max(startDistance, endDistance)
+                                            min(start, end),
+                                            max(start, end)
                                         )
                                     }
+                                }
 
-                                    isDragging = false
-                                    dragStart = nil
-                                    dragEnd = nil
+                                // Reset state
+                                isDragging = false
+                                dragStart = nil
+                                dragEnd = nil
+                                selectedDistance = nil
+                                onHover?(nil)
+                            }
+                    )
+                    #elseif os(macOS)
+                    // macOS hover handling
+                    .onHover { hovering in
+                        if !hovering && !isDragging {
+                            selectedDistance = nil
+                            onHover?(nil)
+                        }
+                    }
+                    .onContinuousHover { phase in
+                        switch phase {
+                        case .active(let location):
+                            if !isDragging {
+                                // Use our optimized point finding with index
+                                if let (point, index) = findPointAt(position: location, proxy: proxy) {
+                                    // Update UI with point position
+                                    selectedDistance = point.distance
+                                    // Report the point's index directly to parent
+                                    onHover?(index)
                                 }
-                        )
-                        // Double click to reset zoom
-                        .gesture(
-                            TapGesture(count: 2)
-                                .onEnded {
-                                    // Double click resets zoom
-                                    onDragSelection?(0, 0)
+                            }
+                        case .ended:
+                            if !isDragging {
+                                selectedDistance = nil
+                                onHover?(nil)
+                            }
+                        }
+                    }
+                    // Add combined drag gesture for direct selection
+                    .gesture(
+                        DragGesture(minimumDistance: 3) // Small threshold for macOS
+                            .onChanged { value in
+                                // Start dragging immediately - macOS has better hover separation
+                                if !isDragging {
+                                    isDragging = true
+                                    dragStart = proxy.value(atX: value.startLocation.x, as: Double.self)
                                 }
-                        )
-                        #endif
-                }
+
+                                // Update end position
+                                dragEnd = proxy.value(atX: value.location.x, as: Double.self)
+                            }
+                            .onEnded { _ in
+                                if let start = dragStart, let end = dragEnd, isDragging {
+                                    // Only trigger zoom if selection has meaningful width
+                                    if abs(end - start) > 0.05 {
+                                        onDragSelection?(
+                                            min(start, end),
+                                            max(start, end)
+                                        )
+                                    }
+                                }
+
+                                // Reset state
+                                isDragging = false
+                                dragStart = nil
+                                dragEnd = nil
+                            }
+                    )
+                    #endif
             }
-
-            // No floating button overlay in the chart - removed to avoid duplication
         }
+        // Double tap/click gesture is sufficient since we integrated drag into the overlay
+        // Double tap/click to reset zoom
+        .gesture(
+            TapGesture(count: 2)
+                .onEnded {
+                    // Double tap resets zoom
+                    onDragSelection?(0, 0)
+                }
+        )
+        // Pinch to reset zoom
         .gesture(
             MagnificationGesture()
                 .onEnded { value in
