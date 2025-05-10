@@ -314,12 +314,12 @@ struct OptimizedElevationChartView: View {
     private func findPointAt(position: CGPoint, proxy: ChartProxy) -> (point: ElevationOverlay.ElevationPoint, index: Int)? {
         // Throttle hover events for large datasets
         let now = Date()
-        if points.count > 1000 && // Only throttle for large datasets
-           now.timeIntervalSince(lastHoverTime) < throttleInterval &&
-           abs(position.x - lastHoverLocation.x) < 5.0 {
-            // Skip processing if we just processed a nearby point recently
-            return nil
-        }
+//        if points.count > 1000 && // Only throttle for large datasets
+//           now.timeIntervalSince(lastHoverTime) < throttleInterval &&
+//           abs(position.x - lastHoverLocation.x) < 5.0 {
+//            // Skip processing if we just processed a nearby point recently
+//            return nil
+//        }
 
         // Update hover tracking
         lastHoverTime = now
