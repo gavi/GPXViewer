@@ -298,6 +298,7 @@ struct OptimizedElevationChartView: View {
     @State private var isDragging: Bool = false
     @State private var dragStart: Double? = nil
     @State private var dragEnd: Double? = nil
+    @State private var lastSelectedIndex: Int? = nil
 
     // Get y scale domain
     private var yScaleDomain: ClosedRange<Double> {
@@ -505,8 +506,8 @@ struct OptimizedElevationChartView: View {
                                 }
                             }
                             .onEnded { _ in
-                                // Clear selection when drag ends
-                                selectedDistance = nil
+                                // Keep selectedDistance to maintain the RuleMark
+                                // Just notify parent that hover ended
                                 onHover?(nil)
                             }
                     )
@@ -514,7 +515,8 @@ struct OptimizedElevationChartView: View {
                     // macOS hover handling
                     .onHover { hovering in
                         if !hovering && !isDragging {
-                            selectedDistance = nil
+                            // Keep selectedDistance to maintain the RuleMark
+                            // Just notify parent that hover ended
                             onHover?(nil)
                         }
                     }
@@ -532,7 +534,8 @@ struct OptimizedElevationChartView: View {
                             }
                         case .ended:
                             if !isDragging {
-                                selectedDistance = nil
+                                // Keep selectedDistance to maintain the RuleMark
+                                // Just notify parent that hover ended
                                 onHover?(nil)
                             }
                         }
