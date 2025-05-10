@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import UniformTypeIdentifiers
 
 struct ContentView: View {
     @Binding var document: GPXExploreDocument
@@ -245,6 +246,10 @@ struct ContentView: View {
                     }
                 }
             } else {
+                #if os(macOS)
+                WelcomeView()
+                    .environmentObject(RecentFilesManager())
+                #else
                 VStack {
                     Text("No valid GPX data found")
                         .font(.title)
@@ -253,6 +258,7 @@ struct ContentView: View {
                     Text("Open a GPX file to view the track on the map")
                         .foregroundColor(.secondary)
                 }
+                #endif
             }
         }
         #if os(iOS)
