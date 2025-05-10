@@ -176,11 +176,29 @@ struct MapView: NSViewRepresentable, MapViewShared {
         // Get existing overlays before clearing
         let existingOverlaysCount = mapView.overlays.count
 
-        // Get the hover annotation - we'll try to reuse it if possible
+        // Get annotations by type for more granular control
         let existingHoverAnnotations = mapView.annotations.filter { $0.title == "Hover Point" }
+        let existingWaypointAnnotations = mapView.annotations.filter { $0 is WaypointAnnotation }
+        let existingMarkerAnnotations = mapView.annotations.filter {
+            $0.title == "Start" || $0.title == "End" || $0.title == "Peak" || $0.title == "Valley"
+        }
         let existingHoverAnnotation = existingHoverAnnotations.first
 
-        // Clear existing overlays only
+        // We only need to update markers (Start, End, Peak, Valley) when the track segments change
+        let shouldUpdateMarkers = (existingOverlaysCount != trackSegments.count) || existingMarkerAnnotations.isEmpty
+
+        // Only remove waypoint annotations if they should not be visible
+        let shouldShowWaypoints = !waypoints.isEmpty
+        if !shouldShowWaypoints && !existingWaypointAnnotations.isEmpty {
+            mapView.removeAnnotations(existingWaypointAnnotations)
+        }
+
+        // Only remove marker annotations if we need to update them (segments changed)
+        if shouldUpdateMarkers && !existingMarkerAnnotations.isEmpty {
+            mapView.removeAnnotations(existingMarkerAnnotations)
+        }
+
+        // 3. Clear existing overlays
         context.coordinator.clearOverlays(from: mapView)
 
         // Skip if no segments or waypoints to show
@@ -272,15 +290,16 @@ struct MapView: NSViewRepresentable, MapViewShared {
         let existingStaticAnnotations = mapView.annotations.filter { $0.title != "Hover Point" }
         let hasStaticAnnotations = !existingStaticAnnotations.isEmpty
 
-        // Add waypoint annotations if they don't exist already
+        // Add waypoint annotations but only if they should be visible and aren't already shown
+        // This prevents unnecessary removes and adds during hover events
         var waypointAnnotations: [WaypointAnnotation] = []
-        if !waypoints.isEmpty && !hasStaticAnnotations {
+        if !waypoints.isEmpty && existingWaypointAnnotations.isEmpty {
             waypointAnnotations = waypoints.map { WaypointAnnotation(waypoint: $0) }
             mapView.addAnnotations(waypointAnnotations)
         }
 
-        if !allLocations.isEmpty && !hasStaticAnnotations {
-            // Add elevation markers only if we don't have static annotations yet
+        if !allLocations.isEmpty && shouldUpdateMarkers {
+            // Add elevation markers and start/end annotations only when needed
             addElevationMarkers(to: mapView, routeLocations: allLocations)
 
             // Add start and end annotations
