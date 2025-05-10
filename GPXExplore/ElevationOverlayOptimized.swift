@@ -778,48 +778,7 @@ struct OptimizedElevationChartView: View {
                 }
             }
 
-            // Floating zoom out button overlay in the chart
-            if zoomRange != nil {
-                VStack {
-                    HStack {
-                        // Zoomed view indicator
-                        Text("Zoomed view")
-                            .font(.caption2)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 12)
-                            .padding(.top, 8)
-
-                        Spacer()
-
-                        Button(action: {
-                            // Reset zoom range to nil
-                            onDragSelection?(0, 0)
-                        }) {
-                            HStack(spacing: 4) {
-                                Text("Reset")
-                                    .font(.caption)
-                                Image(systemName: "arrow.up.left.and.arrow.down.right")
-                                    .font(.system(size: 12, weight: .bold))
-                            }
-                            .foregroundColor(.primary)
-                            .padding(6)
-                            .background(
-                                RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.secondary.opacity(0.15))
-                                    .shadow(radius: 1)
-                            )
-                        }
-                        .buttonStyle(BorderlessButtonStyle())
-                        .padding([.top, .trailing], 8)
-                        .transition(.scale.combined(with: .opacity))
-                        .animation(.easeInOut(duration: 0.2), value: zoomRange != nil)
-                        .help("Reset zoom")
-                        .zIndex(100) // Ensure button is above the chart
-                    }
-
-                    Spacer()
-                }
-            }
+            // No floating button overlay in the chart - removed to avoid duplication
         }
         .gesture(
             MagnificationGesture()
