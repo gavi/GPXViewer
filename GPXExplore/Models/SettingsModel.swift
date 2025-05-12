@@ -144,7 +144,7 @@ class SettingsModel: ObservableObject {
         }
         
         // Initialize default elevation overlay visibility
-        self.defaultShowElevationOverlay = UserDefaults.standard.bool(forKey: "defaultShowElevationOverlay", defaultValue: false)
+        self.defaultShowElevationOverlay = UserDefaults.standard.bool(forKey: "defaultShowElevationOverlay", defaultValue: true)
 
         // Initialize default route info overlay visibility
         self.defaultShowRouteInfoOverlay = UserDefaults.standard.bool(forKey: "defaultShowRouteInfoOverlay", defaultValue: true)
