@@ -103,7 +103,7 @@ struct ContentView: View {
                         isElevationOverlayVisible = settings.defaultShowElevationOverlay
                         isRouteInfoOverlayVisible = settings.defaultShowRouteInfoOverlay
                     }
-                    .onChange(of: document.trackSegments.count) { _ in
+                    .onChange(of: document.trackSegments.count) { oldValue, newValue in
                         updateFromDocument()
                     }
                 
@@ -122,7 +122,7 @@ struct ContentView: View {
                         )
                         .environmentObject(settings)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .onChange(of: triggerSpanView) { newValue in
+                        .onChange(of: triggerSpanView) { oldValue, newValue in
                             if newValue {
                                 // Reset the trigger after it's been used
                                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
@@ -285,7 +285,7 @@ struct ContentView: View {
             updateFromDocument()
         }
         // Check for changes to the GPX file
-        .onChange(of: document.gpxFile?.filename) { _ in
+        .onChange(of: document.gpxFile?.filename) { oldValue, newValue in
             updateDocumentTitle()
         }
         #endif

@@ -111,8 +111,7 @@ class SettingsModel: ObservableObject {
     var chartDataStride: Int {
         let densityFactor = chartDataDensity // 1.0 = full resolution, 0.0 = lowest resolution
         // Dynamically adjust based on density (higher value = lower stride = more points)
-        let basePoints = 2000
-        // When density is 1.0, we show all points up to basePoints before striding
+        // When density is 1.0, we show all points before striding
         // When density is 0.0, we show only about 200 points
         if densityFactor >= 1.0 {
             return 1 // Full resolution

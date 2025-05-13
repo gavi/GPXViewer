@@ -65,7 +65,6 @@ class ElevationPolyline: MKPolyline {
                     grade = (elevation2 - elevation1) / horizontalDistance
                     
                     // Apply realistic limits to grades (real-world trails rarely exceed 35%)
-                    let originalGrade = grade
                     grade = min(max(grade, -0.45), 0.45)
                     
                     // Debug every 20th point to avoid console flood
@@ -258,9 +257,8 @@ class GradientPolylineRenderer: MKPolylineRenderer {
                     // Real-world roads/trails rarely exceed 30-35% grade
                     if abs(grade) > 0.5 {  // 50% grade cutoff for realism
                         // Apply a more reasonable limit
-                        let oldGrade = grade
                         grade = grade > 0 ? 0.35 : -0.35
-                        //print("  Clamping grade from \(oldGrade) to \(grade)")
+                        //print("  Clamping grade from previous value to \(grade)")
                     }
                     
                     // Apply a minimum threshold to avoid flat line when elevation is changing

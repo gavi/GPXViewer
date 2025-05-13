@@ -76,7 +76,7 @@ struct TracksDrawer: View {
                 Spacer()
             }
             .padding(.horizontal)
-            .onChange(of: document.tracks.count) { _ in
+            .onChange(of: document.tracks.count) { oldValue, newValue in
                 initializeExpandedStates()
             }
             .onAppear {
@@ -558,11 +558,7 @@ extension TracksDrawer {
     let mockDoc = GPXExploreDocument(text: "<gpx></gpx>")
     
     // Create a mock document with tracks for preview
-    var doc = mockDoc
-    let mockTracks = [
-        GPXTrack(name: "Track 1", type: "running", date: Date(), segments: []),
-        GPXTrack(name: "Track 2", type: "cycling", date: Date(), segments: [])
-    ]
+    let doc = mockDoc
     
     // Since we can't directly modify the properties, we're just using the
     // document as is and providing the segments separately

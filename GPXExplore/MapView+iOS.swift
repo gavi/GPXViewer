@@ -292,9 +292,7 @@ struct MapView: UIViewRepresentable, MapViewShared {
             }
         }
 
-        // Only add static annotations (waypoints, start/end) if they don't already exist
-        let existingStaticAnnotations = mapView.annotations.filter { $0.title != "Hover Point" }
-        let hasStaticAnnotations = !existingStaticAnnotations.isEmpty
+        // We'll only add static annotations (waypoints, start/end) if needed
 
         // Add waypoint annotations but only if they should be visible and aren't already shown
         // This prevents unnecessary removes and adds during hover events
@@ -480,7 +478,8 @@ extension Coordinator {
             viewController.present(alert, animated: true)
         }
         // Method 2: Using the window's root view controller
-        else if let window = UIApplication.shared.windows.first(where: { $0.isKeyWindow }),
+        else if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                let window = scene.windows.first,
                 let rootVC = window.rootViewController {
             print("Found root view controller via window")
             let alert = UIAlertController(
