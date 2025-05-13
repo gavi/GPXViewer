@@ -26,11 +26,22 @@ struct GPXExploreApp: App {
         #if os(iOS)
         DocumentGroup(viewing: GPXExploreDocument.self) { file in
             NavigationStack {
-                
-                ContentView(document: file.$document)
-                    .onAppear {
-                        setupNotificationObserver()
+                ZStack {
+                    // Regular document content
+                    ContentView(document: file.$document)
+                        .onAppear {
+                            setupNotificationObserver()
+                        }
+                        
+                    // Overlay for direct-opened documents
+                    if isSharedDocumentPresented, let document = sharedDocument {
+                        Color.black.opacity(0.001)
+                            .onAppear {
+                                // Present the shared document in a full-screen cover
+                                presentSharedDocument(document: document)
+                            }
                     }
+                }
             }
         }
         if #available(iOS 18, *) {
@@ -63,6 +74,36 @@ struct GPXExploreApp: App {
     }
     
     #if os(iOS)
+    private func presentSharedDocument(document: GPXExploreDocument) {
+        // Present the document full screen
+        guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+              let rootViewController = windowScene.windows.first?.rootViewController else {
+            print("Could not find root view controller to present document")
+            return
+        }
+        
+        // Create a hosting controller with the content view
+        let contentView = ContentView(document: .constant(document))
+        let hostingController = UIHostingController(rootView: 
+            NavigationStack {
+                contentView
+                    .toolbar {
+                        ToolbarItem(placement: .navigationBarLeading) {
+                            Button("Close") {
+                                self.sharedDocument = nil
+                                self.isSharedDocumentPresented = false
+                                rootViewController.dismiss(animated: true)
+                            }
+                        }
+                    }
+            }
+        )
+        
+        // Present full screen
+        hostingController.modalPresentationStyle = .fullScreen
+        rootViewController.present(hostingController, animated: true)
+    }
+    
     private func setupNotificationObserver() {
         // Listen for notifications about files being shared to our app
         NotificationCenter.default.addObserver(
@@ -70,7 +111,14 @@ struct GPXExploreApp: App {
             object: nil,
             queue: .main
         ) { notification in
-            if let url = notification.object as? URL {
+            // Handle document directly if passed
+            if let document = notification.object as? GPXExploreDocument {
+                print("Received document directly: \(document.gpxFile?.filename ?? "unnamed")")
+                self.sharedDocument = document
+                self.isSharedDocumentPresented = true
+            }
+            // Otherwise handle URL
+            else if let url = notification.object as? URL {
                 // Try to load the document
                 do {
                     // Try to access the security-scoped resource
@@ -136,17 +184,6 @@ struct GPXExploreApp: App {
                         // Update our document and present it
                         self.sharedDocument = document
                         self.isSharedDocumentPresented = true
-                        
-                        // Create a new document window to display this file
-                        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                           let rootViewController = windowScene.windows.first?.rootViewController {
-                            // Create a SwiftUI view with our document
-                            let contentView = ContentView(document: .constant(document))
-                            let hostingController = UIHostingController(rootView: contentView)
-                            
-                            // Present it modally
-                            rootViewController.present(hostingController, animated: true)
-                        }
                     } else {
                         throw NSError(domain: "GPXExplore", code: 3, userInfo: [
                             NSLocalizedDescriptionKey: "Could not convert file data to text"
@@ -232,7 +269,53 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     
     // Supporting function for all iOS versions
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
-        handleIncomingURL(url)
+        print("AppDelegate: Received URL to open: \(url)")
+        
+        // Simple, direct approach
+        let accessGranted = url.startAccessingSecurityScopedResource()
+        
+        defer {
+            if accessGranted {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        
+        do {
+            // Try to read the data directly
+            let data = try Data(contentsOf: url)
+            
+            // Parse the GPX data
+            if let content = String(data: data, encoding: .utf8) {
+                var document = GPXExploreDocument(text: content)
+                document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
+                
+                // Display the document directly using UIKit
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+                   let rootViewController = windowScene.windows.first?.rootViewController {
+                    let contentView = ContentView(document: .constant(document))
+                    let hostingController = UIHostingController(rootView: 
+                        NavigationStack {
+                            contentView
+                                .toolbar {
+                                    ToolbarItem(placement: .navigationBarLeading) {
+                                        Button("Close") {
+                                            rootViewController.dismiss(animated: true)
+                                        }
+                                    }
+                                }
+                        }
+                    )
+                    
+                    hostingController.modalPresentationStyle = .fullScreen
+                    DispatchQueue.main.async {
+                        rootViewController.present(hostingController, animated: true)
+                    }
+                }
+            }
+        } catch {
+            print("AppDelegate: Error opening file: \(error)")
+        }
+        
         return true
     }
     
@@ -244,6 +327,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     }
     
     private func handleIncomingURL(_ url: URL) {
+        print("Handling incoming URL: \(url)")
         // Track access success for better error diagnostics
         var accessSuccess = false
         var resolvedURL = url
@@ -331,7 +415,7 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
             // Write the data to the temporary file
             try data.write(to: tempFileURL)
             
-            // Notify the app to open this file
+            // Notify the app to open this file using the shared notification center
             NotificationCenter.default.post(
                 name: Notification.Name("OpenGPXFile"),
                 object: tempFileURL
@@ -349,16 +433,111 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
         // Handle any URLs that were passed when the app was launched
         if let urlContext = connectionOptions.urlContexts.first {
-            handleIncomingURL(urlContext.url)
+            let url = urlContext.url
+            print("SceneDelegate: Received URL at app launch: \(url)")
+            
+            // Simple, direct approach
+            let accessGranted = url.startAccessingSecurityScopedResource()
+            
+            defer {
+                if accessGranted {
+                    url.stopAccessingSecurityScopedResource()
+                }
+            }
+            
+            do {
+                // Try to read the data directly
+                let data = try Data(contentsOf: url)
+                
+                // Parse the GPX data
+                if let content = String(data: data, encoding: .utf8) {
+                    var document = GPXExploreDocument(text: content)
+                    document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
+                    
+                    // Display the document directly using UIKit
+                    // We need to delay this slightly at launch to ensure the window is ready
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                        if let windowScene = scene as? UIWindowScene,
+                           let rootViewController = windowScene.windows.first?.rootViewController {
+                            let contentView = ContentView(document: .constant(document))
+                            let hostingController = UIHostingController(rootView: 
+                                NavigationStack {
+                                    contentView
+                                        .toolbar {
+                                            ToolbarItem(placement: .navigationBarLeading) {
+                                                Button("Close") {
+                                                    rootViewController.dismiss(animated: true)
+                                                }
+                                            }
+                                        }
+                                }
+                            )
+                            
+                            hostingController.modalPresentationStyle = .fullScreen
+                            rootViewController.present(hostingController, animated: true)
+                        }
+                    }
+                }
+            } catch {
+                print("Error opening file at launch: \(error)")
+            }
         }
     }
     
     func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
         guard let urlContext = URLContexts.first else { return }
-        handleIncomingURL(urlContext.url)
+        
+        let url = urlContext.url
+        print("SceneDelegate: Received URL from openURLContexts: \(url)")
+        
+        // Simple, direct approach
+        let accessGranted = url.startAccessingSecurityScopedResource()
+        
+        defer {
+            if accessGranted {
+                url.stopAccessingSecurityScopedResource()
+            }
+        }
+        
+        do {
+            // Try to read the data directly
+            let data = try Data(contentsOf: url)
+            
+            // Parse the GPX data
+            if let content = String(data: data, encoding: .utf8) {
+                var document = GPXExploreDocument(text: content)
+                document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
+                
+                // Display the document directly using UIKit
+                if let windowScene = scene as? UIWindowScene,
+                   let rootViewController = windowScene.windows.first?.rootViewController {
+                    let contentView = ContentView(document: .constant(document))
+                    let hostingController = UIHostingController(rootView: 
+                        NavigationStack {
+                            contentView
+                                .toolbar {
+                                    ToolbarItem(placement: .navigationBarLeading) {
+                                        Button("Close") {
+                                            rootViewController.dismiss(animated: true)
+                                        }
+                                    }
+                                }
+                        }
+                    )
+                    
+                    hostingController.modalPresentationStyle = .fullScreen
+                    DispatchQueue.main.async {
+                        rootViewController.present(hostingController, animated: true)
+                    }
+                }
+            }
+        } catch {
+            print("Error opening file: \(error)")
+        }
     }
     
     private func handleIncomingURL(_ url: URL) {
+        print("Handling incoming URL: \(url)")
         // Track access success for better error diagnostics
         var accessSuccess = false
         var resolvedURL = url
@@ -446,7 +625,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
             // Write the data to the temporary file
             try data.write(to: tempFileURL)
             
-            // Notify the app to open this file
+            // Notify the app to open this file using the shared notification center
             NotificationCenter.default.post(
                 name: Notification.Name("OpenGPXFile"),
                 object: tempFileURL
