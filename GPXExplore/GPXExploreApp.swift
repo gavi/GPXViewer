@@ -271,49 +271,11 @@ final class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
         print("AppDelegate: Received URL to open: \(url)")
         
-        // Simple, direct approach
-        let accessGranted = url.startAccessingSecurityScopedResource()
-        
-        defer {
-            if accessGranted {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-        
-        do {
-            // Try to read the data directly
-            let data = try Data(contentsOf: url)
-            
-            // Parse the GPX data
-            if let content = String(data: data, encoding: .utf8) {
-                var document = GPXExploreDocument(text: content)
-                document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
-                
-                // Display the document directly using UIKit
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-                   let rootViewController = windowScene.windows.first?.rootViewController {
-                    let contentView = ContentView(document: .constant(document))
-                    let hostingController = UIHostingController(rootView: 
-                        NavigationStack {
-                            contentView
-                                .toolbar {
-                                    ToolbarItem(placement: .navigationBarLeading) {
-                                        Button("Close") {
-                                            rootViewController.dismiss(animated: true)
-                                        }
-                                    }
-                                }
-                        }
-                    )
-                    
-                    hostingController.modalPresentationStyle = .fullScreen
-                    DispatchQueue.main.async {
-                        rootViewController.present(hostingController, animated: true)
-                    }
-                }
-            }
-        } catch {
-            print("AppDelegate: Error opening file: \(error)")
+        // Let SceneDelegate handle the URL
+        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
+           let sceneDelegate = windowScene.delegate as? SceneDelegate {
+            // Use the scene delegate's method to handle the URL
+            sceneDelegate.handleURLDirectly(url, in: windowScene)
         }
         
         return true
@@ -434,53 +396,81 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Handle any URLs that were passed when the app was launched
         if let urlContext = connectionOptions.urlContexts.first {
             let url = urlContext.url
-            print("SceneDelegate: Received URL at app launch: \(url)")
             
-            // Simple, direct approach
-            let accessGranted = url.startAccessingSecurityScopedResource()
-            
-            defer {
-                if accessGranted {
-                    url.stopAccessingSecurityScopedResource()
+            // We need to delay this slightly at launch to ensure the window is ready
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+                self.handleURLDirectly(url, in: scene)
+            }
+        }
+    }
+    
+    func handleURLDirectly(_ url: URL, in scene: UIScene) {
+        print("SceneDelegate: Handling URL directly: \(url)")
+        
+        // Create a temporary URL in the app's Documents directory to store the file
+        let fileManager = FileManager.default
+        let documentsDirectory = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let destinationURL = documentsDirectory.appendingPathComponent(url.lastPathComponent)
+        
+        do {
+            // Copy the file to our documents directory if it doesn't exist
+            if !fileManager.fileExists(atPath: destinationURL.path) {
+                let accessGranted = url.startAccessingSecurityScopedResource()
+                
+                defer {
+                    if accessGranted {
+                        url.stopAccessingSecurityScopedResource()
+                    }
                 }
+                
+                try fileManager.copyItem(at: url, to: destinationURL)
+                print("File copied to app's documents: \(destinationURL)")
             }
             
-            do {
-                // Try to read the data directly
-                let data = try Data(contentsOf: url)
-                
-                // Parse the GPX data
+            // Create a user activity to record this document in recents
+            let activity = NSUserActivity(activityType: "com.objectgraph.GPXExplore.viewing")
+            activity.title = url.lastPathComponent
+            // Don't set webpageURL - file:// URLs aren't allowed
+            activity.userInfo = ["url": destinationURL.path]
+            activity.isEligibleForHandoff = true
+            activity.isEligibleForSearch = true
+            activity.isEligibleForPrediction = true
+            activity.becomeCurrent()
+            
+            // Now open the file using UIKit
+            if let windowScene = scene as? UIWindowScene {
+                // Read the file data
+                let data = try Data(contentsOf: destinationURL)
                 if let content = String(data: data, encoding: .utf8) {
+                    // Parse GPX data
                     var document = GPXExploreDocument(text: content)
-                    document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
+                    document.gpxFile = GPXParser.parseGPXData(data, filename: destinationURL.lastPathComponent)
                     
-                    // Display the document directly using UIKit
-                    // We need to delay this slightly at launch to ensure the window is ready
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-                        if let windowScene = scene as? UIWindowScene,
-                           let rootViewController = windowScene.windows.first?.rootViewController {
-                            let contentView = ContentView(document: .constant(document))
-                            let hostingController = UIHostingController(rootView: 
-                                NavigationStack {
-                                    contentView
-                                        .toolbar {
-                                            ToolbarItem(placement: .navigationBarLeading) {
-                                                Button("Close") {
-                                                    rootViewController.dismiss(animated: true)
-                                                }
+                    // Create and present the view
+                    if let rootViewController = windowScene.windows.first?.rootViewController {
+                        let contentView = ContentView(document: .constant(document))
+                        let hostingController = UIHostingController(rootView: 
+                            NavigationStack {
+                                contentView
+                                    .toolbar {
+                                        ToolbarItem(placement: .navigationBarLeading) {
+                                            Button("Close") {
+                                                rootViewController.dismiss(animated: true)
                                             }
                                         }
-                                }
-                            )
-                            
-                            hostingController.modalPresentationStyle = .fullScreen
+                                    }
+                            }
+                        )
+                        
+                        hostingController.modalPresentationStyle = .fullScreen
+                        DispatchQueue.main.async {
                             rootViewController.present(hostingController, animated: true)
                         }
                     }
                 }
-            } catch {
-                print("Error opening file at launch: \(error)")
             }
+        } catch {
+            print("Error processing URL: \(error)")
         }
     }
     
@@ -490,51 +480,12 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         let url = urlContext.url
         print("SceneDelegate: Received URL from openURLContexts: \(url)")
         
-        // Simple, direct approach
-        let accessGranted = url.startAccessingSecurityScopedResource()
-        
-        defer {
-            if accessGranted {
-                url.stopAccessingSecurityScopedResource()
-            }
-        }
-        
-        do {
-            // Try to read the data directly
-            let data = try Data(contentsOf: url)
-            
-            // Parse the GPX data
-            if let content = String(data: data, encoding: .utf8) {
-                var document = GPXExploreDocument(text: content)
-                document.gpxFile = GPXParser.parseGPXData(data, filename: url.lastPathComponent)
-                
-                // Display the document directly using UIKit
-                if let windowScene = scene as? UIWindowScene,
-                   let rootViewController = windowScene.windows.first?.rootViewController {
-                    let contentView = ContentView(document: .constant(document))
-                    let hostingController = UIHostingController(rootView: 
-                        NavigationStack {
-                            contentView
-                                .toolbar {
-                                    ToolbarItem(placement: .navigationBarLeading) {
-                                        Button("Close") {
-                                            rootViewController.dismiss(animated: true)
-                                        }
-                                    }
-                                }
-                        }
-                    )
-                    
-                    hostingController.modalPresentationStyle = .fullScreen
-                    DispatchQueue.main.async {
-                        rootViewController.present(hostingController, animated: true)
-                    }
-                }
-            }
-        } catch {
-            print("Error opening file: \(error)")
-        }
+        // Use our direct handler
+        handleURLDirectly(url, in: scene)
     }
+    
+    // We're not using a document controller anymore, 
+    // going with direct ContentView presentation instead
     
     private func handleIncomingURL(_ url: URL) {
         print("Handling incoming URL: \(url)")
