@@ -12,6 +12,49 @@ import UIKit
 #endif
 #if os(macOS)
 import AppKit
+
+class AppDelegate: NSObject, NSApplicationDelegate {
+    @objc func showWelcomeWindow() {
+        if let existingWindow = NSApp.windows.first(where: { $0.title == "Welcome to GPXExplore" }) {
+            existingWindow.makeKeyAndOrderFront(nil)
+            return
+        }
+        
+        let welcomeController = NSHostingController(rootView: WelcomeView().environmentObject(RecentFilesManager()))
+        let window = NSWindow(contentViewController: welcomeController)
+        window.title = "Welcome to GPXExplore"
+        window.styleMask = [.titled, .closable, .miniaturizable, .resizable]
+        window.setContentSize(NSSize(width: 600, height: 500))
+        window.center()
+        window.makeKeyAndOrderFront(nil)
+    }
+    
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        // Add welcome window menu item
+        if let mainMenu = NSApp.mainMenu {
+            if let fileMenu = mainMenu.items.first(where: { $0.title == "File" })?.submenu {
+                fileMenu.insertItem(NSMenuItem.separator(), at: 1)
+                
+                let newWelcomeItem = NSMenuItem(title: "Welcome Screen", action: #selector(showWelcomeWindow), keyEquivalent: "w")
+                newWelcomeItem.keyEquivalentModifierMask = [.command, .shift]
+                fileMenu.insertItem(newWelcomeItem, at: 2)
+            }
+        }
+        
+        // Close any open panels and show welcome window
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+            // Close any automatic "Open" panels
+            if let openPanel = NSApp.windows.first(where: { $0.title == "Open" }) {
+                openPanel.close()
+                
+                // Show welcome window instead
+                self.showWelcomeWindow()
+            } else if NSApp.windows.isEmpty {
+                self.showWelcomeWindow()
+            }
+        }
+    }
+}
 #endif
 
 @main
@@ -20,6 +63,9 @@ struct GPXExploreApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @State private var sharedDocument: GPXExploreDocument?
     @State private var isSharedDocumentPresented = false
+    #else
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var recentFilesManager = RecentFilesManager()
     #endif
     
     var body: some Scene {
@@ -59,8 +105,15 @@ struct GPXExploreApp: App {
         }
         
         #else
+        // Main document group for GPX files
         DocumentGroup(viewing: GPXExploreDocument.self) { file in
             ContentView(document: file.$document)
+                .onAppear {
+                    // Add to recent files when document is opened
+                    if let url = file.fileURL {
+                        recentFilesManager.addRecentFile(url, title: file.fileURL?.lastPathComponent ?? "Untitled")
+                    }
+                }
         }
         .commands {
             CommandGroup(after: .importExport) {
@@ -68,8 +121,18 @@ struct GPXExploreApp: App {
                     openDocument()
                 }
                 .keyboardShortcut("O", modifiers: [.command, .shift])
+                
+                Divider()
+                
+                Button("Welcome Screen") {
+                    if let appDelegate = NSApp.delegate as? AppDelegate {
+                        appDelegate.showWelcomeWindow()
+                    }
+                }
+                .keyboardShortcut("w", modifiers: [.command, .shift])
             }
         }
+        
         #endif
     }
     
@@ -220,10 +283,14 @@ struct GPXExploreApp: App {
         
         if panel.runModal() == .OK {
             if let url = panel.url {
+                // Add to recent files
+                recentFilesManager.addRecentFile(url, title: url.lastPathComponent)
+                // Open the document
                 NSWorkspace.shared.open(url)
             }
         }
     }
+    
     #endif
 }
 
