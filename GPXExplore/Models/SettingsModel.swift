@@ -65,6 +65,12 @@ enum ElevationVisualizationMode: String, CaseIterable, Identifiable {
 }
 
 class SettingsModel: ObservableObject {
+    @Published var userLocationEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(userLocationEnabled, forKey: "userLocationEnabled")
+        }
+    }
+    
     @Published var useMetricSystem: Bool {
         didSet {
             UserDefaults.standard.set(useMetricSystem, forKey: "useMetricSystem")
@@ -124,6 +130,7 @@ class SettingsModel: ObservableObject {
     
     init() {
         // Initialize all stored properties in the correct order
+        self.userLocationEnabled = UserDefaults.standard.bool(forKey: "userLocationEnabled", defaultValue: false)
         self.useMetricSystem = UserDefaults.standard.bool(forKey: "useMetricSystem", defaultValue: true)
         
         // Initialize map style

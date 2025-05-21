@@ -5,6 +5,7 @@ import CoreLocation
 struct ContentView: View {
     @Binding var document: GPXExploreDocument
     @StateObject private var settings = SettingsModel()
+    @StateObject private var locationManager = LocationManager.shared
     @State private var isTracksDrawerOpen = false
     @State private var isSettingsPresented = false
     @State private var visibleSegments: [Bool] = []
@@ -224,7 +225,7 @@ struct ContentView: View {
                             }
                         }
                         
-                        
+                        // Location button removed - now using MapKit's built-in user location tracking
                         
                         // Tracks drawer toggle
                         ToolbarItem(placement: .automatic) {
@@ -287,6 +288,37 @@ struct ContentView: View {
         // Check for changes to the GPX file
         .onChange(of: document.gpxFile?.filename) { oldValue, newValue in
             updateDocumentTitle()
+        }
+        // Present location permission alert when needed
+        .alert("Location Permission Required", isPresented: $locationManager.showLocationPermissionAlert) {
+            Button("Settings") {
+                // Open app settings
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
+                }
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Location permission is needed to show your current position on the map. Please enable it in Settings.")
+        }
+        #elseif os(macOS)
+        .onAppear {
+            updateDocumentTitle()
+            updateFromDocument()
+        }
+        // Check for changes to the GPX file
+        .onChange(of: document.gpxFile?.filename) { oldValue, newValue in
+            updateDocumentTitle()
+        }
+        // Present location permission alert when needed
+        .alert("Location Permission Required", isPresented: $locationManager.showLocationPermissionAlert) {
+            Button("System Preferences") {
+                // Open System Preferences Security & Privacy
+                NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_LocationServices")!)
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Location permission is needed to show your current position on the map. Please enable it in System Preferences > Security & Privacy > Location Services.")
         }
         #endif
     }

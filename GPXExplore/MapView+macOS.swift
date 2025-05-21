@@ -55,7 +55,15 @@ struct MapView: NSViewRepresentable, MapViewShared {
     func makeNSView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
-        mapView.showsUserLocation = false
+        mapView.showsUserLocation = settings.userLocationEnabled
+        
+        // Set up compass and other controls
+        if #available(macOS 11.0, *) {
+            mapView.showsCompass = true
+            mapView.showsZoomControls = true
+            // On macOS, we don't have a standard user tracking button,
+            // but we can add one via MKCompassButton when needed
+        }
         
         #if swift(>=5.7)
         if #available(macOS 13.0, *) {
@@ -169,6 +177,13 @@ struct MapView: NSViewRepresentable, MapViewShared {
         #else
         mapView.mapType = settings.mapStyle.mapType
         #endif
+        
+        // Update user location visibility based on settings
+        mapView.showsUserLocation = settings.userLocationEnabled
+        
+        // Set up notification observer for centering on user location
+        // The function handles the internal state check
+        context.coordinator.observeLocationNotifications(mapView: mapView)
 
         // Always update when this method is called to ensure visibility changes are reflected
         // This handles both segment count changes and visibility toggling
@@ -409,6 +424,39 @@ struct MapView: NSViewRepresentable, MapViewShared {
 }
 
 extension Coordinator {
+    // Set up notification observers for location updates
+    func observeLocationNotifications(mapView: MKMapView) {
+        // Use objc_getAssociatedObject directly since we can't access property
+        let isObserving = objc_getAssociatedObject(self, &AssociatedKeys.observingLocationNotifications) as? Bool ?? false
+        
+        // Don't set up if already observing
+        guard !isObserving else { return }
+        
+        NotificationCenter.default.addObserver(
+            forName: Notification.Name("CenterOnUserLocation"),
+            object: nil,
+            queue: .main
+        ) { [weak self, weak mapView] notification in
+            guard let mapView = mapView else { return }
+            
+            if let userInfo = notification.userInfo,
+               let location = userInfo["location"] as? CLLocation {
+                
+                // Create a region centered on user location
+                let region = MKCoordinateRegion(
+                    center: location.coordinate,
+                    span: MKCoordinateSpan(latitudeDelta: 0.01, longitudeDelta: 0.01)
+                )
+                
+                // Animate to this region
+                mapView.setRegion(region, animated: true)
+            }
+        }
+        
+        // Use objc_setAssociatedObject directly
+        objc_setAssociatedObject(self, &AssociatedKeys.observingLocationNotifications, true, .OBJC_ASSOCIATION_RETAIN)
+    }
+    
     // Handle the click for the copy button on macOS
     func mapView(_ mapView: MKMapView, annotationView view: MKAnnotationView, calloutAccessoryControlTapped control: NSControl) {
         print("Copy button tapped in callout (macOS)")

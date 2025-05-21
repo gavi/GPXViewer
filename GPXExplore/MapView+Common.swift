@@ -1,6 +1,7 @@
 import SwiftUI
 import MapKit
 import CoreLocation
+import ObjectiveC
 
 #if os(iOS)
 import UIKit
@@ -628,6 +629,11 @@ class HoverPointAnnotation: NSObject, MKAnnotation {
         self.useMetric = useMetric
         super.init()
     }
+}
+
+// Associated keys for storing properties on the Coordinator class
+struct AssociatedKeys {
+    static var observingLocationNotifications = "observingLocationNotifications"
 }
 
 // Shared MapView functionality
