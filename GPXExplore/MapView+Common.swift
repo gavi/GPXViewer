@@ -1,7 +1,6 @@
 import SwiftUI
 import MapKit
 import CoreLocation
-import ObjectiveC
 
 #if os(iOS)
 import UIKit
@@ -631,11 +630,6 @@ class HoverPointAnnotation: NSObject, MKAnnotation {
     }
 }
 
-// Associated keys for storing properties on the Coordinator class
-struct AssociatedKeys {
-    static var observingLocationNotifications = "observingLocationNotifications"
-}
-
 // Shared MapView functionality
 protocol MapViewShared {
     var trackSegments: [GPXTrackSegment] { get }
@@ -784,6 +778,29 @@ class Coordinator: NSObject, MKMapViewDelegate {
     var lastHoverUpdateTime: Date = Date.distantPast // Track when we last updated hover point
     var lastHoveredIndex: Int? = nil // Track the last hovered point index
     let hoverThrottleInterval: TimeInterval = 0.25 // Throttle hover updates to 4 per second
+    
+    // Location management
+    weak var mapView: MKMapView?
+    
+    // Location controls references (iOS only)
+    #if os(iOS)
+    private weak var compassButton: MKCompassButton?
+    private weak var userTrackingButton: MKUserTrackingButton?
+    #endif
+    
+    override init() {
+        super.init()
+    }
+    
+    deinit {
+        delayedZoomTimer?.invalidate()
+        
+        // Disable MapKit's user location display to stop its automatic location updates
+        mapView?.showsUserLocation = false
+        mapView?.setUserTrackingMode(.none, animated: false)
+        
+        print("Coordinator deallocated - stopped location updates")
+    }
     
     // Keep the single polyline property for backward compatibility
     var elevationPolyline: ElevationPolyline? {
@@ -1010,4 +1027,56 @@ class Coordinator: NSObject, MKMapViewDelegate {
 
         return annotationView
     }
+    
+    
+    #if os(iOS)
+    func setupLocationControls(mapView: MKMapView, enabled: Bool) {
+        if enabled {
+            // Add compass button if not already present
+            if compassButton == nil {
+                let compass = MKCompassButton(mapView: mapView)
+                compass.compassVisibility = .visible
+                mapView.addSubview(compass)
+                compass.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    compass.centerYAnchor.constraint(equalTo: mapView.centerYAnchor),
+                    compass.leadingAnchor.constraint(equalTo: mapView.safeAreaLayoutGuide.leadingAnchor, constant: 20)
+                ])
+                compassButton = compass
+            }
+            
+            // Add user tracking button if not already present
+            if userTrackingButton == nil {
+                let trackingButton = MKUserTrackingButton(mapView: mapView)
+                trackingButton.layer.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.7).cgColor
+                trackingButton.layer.cornerRadius = 5
+                trackingButton.layer.borderWidth = 1
+                trackingButton.layer.borderColor = UIColor.systemGray.cgColor
+                mapView.addSubview(trackingButton)
+                trackingButton.translatesAutoresizingMaskIntoConstraints = false
+                NSLayoutConstraint.activate([
+                    trackingButton.centerYAnchor.constraint(equalTo: mapView.centerYAnchor),
+                    trackingButton.trailingAnchor.constraint(equalTo: mapView.safeAreaLayoutGuide.trailingAnchor, constant: -20)
+                ])
+                userTrackingButton = trackingButton
+            }
+            
+            // Ensure buttons are visible
+            compassButton?.isHidden = false
+            userTrackingButton?.isHidden = false
+        } else {
+            // When location is disabled, stop any active user tracking and hide buttons
+            if mapView.userTrackingMode != .none {
+                mapView.setUserTrackingMode(.none, animated: true)
+            }
+            
+            // Disable MapKit's user location display to stop automatic location updates
+            mapView.showsUserLocation = false
+            
+            // Hide buttons when disabled
+            compassButton?.isHidden = true
+            userTrackingButton?.isHidden = true
+        }
+    }
+    #endif
 }

@@ -56,23 +56,20 @@ struct MapView: UIViewRepresentable, MapViewShared {
     func makeUIView(context: Context) -> MKMapView {
         let mapView = MKMapView()
         mapView.delegate = context.coordinator
-        mapView.showsUserLocation = settings.userLocationEnabled
         
-        // Set up user tracking controls
-        mapView.showsUserLocation = true
-        mapView.showsUserTrackingButton = true
+        // Only show user location if permission is granted
+        mapView.showsUserLocation = settings.userLocationEnabled && 
+            (CLLocationManager().authorizationStatus == .authorizedWhenInUse || 
+             CLLocationManager().authorizationStatus == .authorizedAlways)
         
-        // Create a compass view that will be added to the map
-        let compassButton = MKCompassButton(mapView: mapView)
-        compassButton.compassVisibility = .visible
+        // Disable the built-in tracking button since we're adding our own
+        mapView.showsUserTrackingButton = false
         
-        // Add the compass to the top right of the map view
-        mapView.addSubview(compassButton)
-        compassButton.translatesAutoresizingMaskIntoConstraints = false
-        NSLayoutConstraint.activate([
-            compassButton.topAnchor.constraint(equalTo: mapView.safeAreaLayoutGuide.topAnchor, constant: 10),
-            compassButton.trailingAnchor.constraint(equalTo: mapView.safeAreaLayoutGuide.trailingAnchor, constant: -10)
-        ])
+        // Initialize location controls - they will be managed dynamically in updateUIView
+        context.coordinator.setupLocationControls(mapView: mapView, enabled: settings.userLocationEnabled)
+        
+        // Store reference to the mapView in the coordinator for permission handling
+        context.coordinator.mapView = mapView
         
         // Store if this is initial load to perform delayed zoom in
         context.coordinator.isInitialLoad = true
@@ -193,9 +190,13 @@ struct MapView: UIViewRepresentable, MapViewShared {
         mapView.mapType = settings.mapStyle.mapType
         #endif
         
-        // Update user location visibility based on settings
-        mapView.showsUserLocation = settings.userLocationEnabled
-        mapView.showsUserTrackingButton = settings.userLocationEnabled
+        // Update user location visibility based on settings and permissions
+        let authStatus = CLLocationManager().authorizationStatus
+        mapView.showsUserLocation = settings.userLocationEnabled && 
+            (authStatus == .authorizedWhenInUse || authStatus == .authorizedAlways)
+        
+        // Dynamically manage location controls based on settings
+        context.coordinator.setupLocationControls(mapView: mapView, enabled: settings.userLocationEnabled)
 
         // Always update when this method is called to ensure visibility changes are reflected
         // This handles both segment count changes and visibility toggling

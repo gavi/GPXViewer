@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import MapKit
+import CoreLocation
 
 // Custom model to replace HKWorkout
 struct GPXWorkout {

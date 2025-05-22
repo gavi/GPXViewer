@@ -56,11 +56,6 @@ struct SettingsView: View {
                         
                         VStack(alignment: .leading, spacing: 4) {
                             Toggle("Show My Location", isOn: $settings.userLocationEnabled)
-                                .onChange(of: settings.userLocationEnabled) { oldValue, newValue in
-                                    if newValue {
-                                        LocationManager.shared.requestLocationIfNeeded()
-                                    }
-                                }
                             
                             Text("Shows your current location on the map when enabled")
                                 .font(.caption)
@@ -184,11 +179,6 @@ struct SettingsView: View {
                 .pickerStyle(SegmentedPickerStyle())
                 
                 Toggle("Show My Location", isOn: $settings.userLocationEnabled)
-                    .onChange(of: settings.userLocationEnabled) { oldValue, newValue in
-                        if newValue {
-                            LocationManager.shared.requestLocationIfNeeded()
-                        }
-                    }
                 
                 Text("Shows your current location on the map when enabled")
                     .font(.caption)
